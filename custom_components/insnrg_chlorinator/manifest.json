@@ -1,0 +1,9 @@
+{
+    "domain": "insnrg_chlorinator",
+    "name": "INSNRG Chlorinator",
+    "documentation": "https://github.com/Mattat01/ha-insnrg-chlorinator",
+    "dependencies": [],
+    "codeowners": [ "@Mattat01" ],
+    "requirements": [],
+    "version": "0.1.0"
+}
