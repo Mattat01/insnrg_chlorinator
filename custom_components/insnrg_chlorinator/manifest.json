@@ -2,6 +2,7 @@
     "domain": "insnrg_chlorinator",
     "name": "INSNRG Chlorinator",
     "documentation": "https://github.com/Mattat01/ha-insnrg-chlorinator",
+    "config_flow": true,
     "dependencies": [],
     "codeowners": [ "@Mattat01" ],
     "requirements": [],
