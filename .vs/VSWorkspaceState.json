@@ -4,6 +4,6 @@
     "\\custom_components",
     "\\custom_components\\insnrg_chlorinator"
   ],
-  "SelectedNode": "\\README.md",
+  "SelectedNode": "\\custom_components\\insnrg_chlorinator\\sensor.py",
   "PreviewInSolutionExplorer": false
 }

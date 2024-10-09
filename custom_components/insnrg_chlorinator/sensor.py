@@ -1,20 +1,20 @@
 import logging
 import requests
-from datetime import timedelta
+import aiohttp
+import async_timeout
+import uuid
+from datetime import datetime, timedelta
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers.event import async_track_time_interval
 from .const import DOMAIN, API_URL
 
 _LOGGER = logging.getLogger(__name__)
 
-async def async_setup_platform(hass, config, async_add_entities, discovery_info=None):
+async def async_setup_entry(hass, config, async_add_entities) -> None:
+    _LOGGER.info("Setting up sensors in sensor.py")
     config_data = hass.config_entries.async_entries(DOMAIN)[0].data
     token = config_data["bearer_token"]
     system_id = config_data["system_id"]
-    high_ph = config_data["high_ph"]
-    low_ph = config_data["low_ph"]
-    high_orp = config_data["high_orp"]
-    low_orp = config_data["low_orp"]
 
     sensors = [
         InsnrgChlorinatorSensor("Current pH", token, system_id, API_URL, "currentPh"),
@@ -25,6 +25,8 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
         InsnrgChlorinatorSensor("ORP Connected", token, system_id, API_URL, "orpConnected")
     ]
     async_add_entities(sensors)
+    # Store the sensors in hass.data for future updates
+    hass.data[DOMAIN][config.entry_id]["sensors"].extend(sensors)
 
     # Schedule updates once a day
     async_track_time_interval(hass, lambda _: update_sensors(hass, sensors), timedelta(days=1))
@@ -41,6 +43,8 @@ class InsnrgChlorinatorSensor(SensorEntity):
         self._system_id = system_id
         self._api_url = api_url
         self._data_key = data_key
+        self._last_updated = None
+        self._unique_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{system_id}_{data_key}"))
 
     @property
     def name(self):
@@ -50,6 +54,17 @@ class InsnrgChlorinatorSensor(SensorEntity):
     def state(self):
         return self._state
 
+    @property
+    def extra_state_attributes(self):
+        """Return the state attributes."""
+        return {
+            "last_updated": self._last_updated
+        }
+
+    @property
+    def unique_id(self):
+        return self._unique_id
+
     async def async_update(self):
         headers = {"Authorization": f"Bearer {self._token}"}
         body = {
@@ -57,10 +72,14 @@ class InsnrgChlorinatorSensor(SensorEntity):
             "params": "ChemistryScreen",
             "action": "view"
         }
-        response = requests.post(self._api_url, headers=headers, json=body)
-        if response.status_code == 200:
-            data = response.json()
-            pool_data = data.get("poolChemistry", {})
-            self._state = pool_data.get(self._data_key)
-        else:
-            _LOGGER.error(f"Failed to update {self._name}: {response.text}")
+
+        async with aiohttp.ClientSession() as session:
+            async with async_timeout.timeout(10):  # Set a timeout for the request
+                async with session.post(self._api_url, headers=headers, json=body) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        pool_data = data.get("poolChemistry", {})
+                        self._state = pool_data.get(self._data_key)
+                        self._last_updated = datetime.now().isoformat()
+                    else:
+                        _LOGGER.error(f"Failed to update {self._name}: {await response.text()}")

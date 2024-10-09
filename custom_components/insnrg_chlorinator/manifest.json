@@ -1,5 +1,5 @@
 {
-    "domain": "insnrg_chlorinator",
+    "domain": "ha-insnrg-chlorinator",
     "name": "INSNRG Chlorinator",
     "documentation": "https://github.com/Mattat01/ha-insnrg-chlorinator",
     "config_flow": true,
