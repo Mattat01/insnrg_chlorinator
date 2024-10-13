@@ -1,8 +1,12 @@
 import logging
+import requests
+import aiohttp
+import async_timeout
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.helpers.event import async_track_time_interval
-from datetime import timedelta
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from datetime import datetime, timedelta
 from homeassistant.core import (
     HomeAssistant,
     ServiceCall,
@@ -10,71 +14,108 @@ from homeassistant.core import (
 from homeassistant.const import (
     Platform,
 )
-PLATFORMS = [Platform.SENSOR]
-
-_LOGGER = logging.getLogger(__name__)
 from .const import DOMAIN
+
+PLATFORMS = [Platform.SENSOR]
+_LOGGER = logging.getLogger(__name__)
+SCAN_INTERVAL = timedelta(hours=1)
+
+class InsnrgChlorinatorCoordinator(DataUpdateCoordinator):
+    """Coordinator to manage data updates."""
+    _LOGGER.info("Setting up INSNRG Coordinator")
+
+    def __init__(self, hass: HomeAssistant, api_url, system_id, token):
+        """Initialize the coordinator."""
+        super().__init__(hass, _LOGGER, name = DOMAIN, update_interval = SCAN_INTERVAL)
+        self.api_url = api_url
+        self.system_id = system_id
+        self.token = token
+        self.updated = datetime.now().isoformat()
+
+    async def _async_update_data(self):
+        """Fetch data from the API and return it."""
+        headers = {"Authorization": f"Bearer {self.token}"}
+        body = {
+            "systemId": self.system_id,
+            "params": "ChemistryScreen",
+            "action": "view"
+        }
+
+        async with aiohttp.ClientSession() as session:
+            try:
+                async with async_timeout.timeout(10):
+                    async with session.post(self.api_url, headers=headers, json=body) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            self.updated = datetime.now().isoformat()
+                            _LOGGER.info("updating chlorinator")
+                            return data.get("poolChemistry", {})
+                        else:
+                            _LOGGER.error("Error fetching data from API: %s", await response.text())
+                            raise UpdateFailed(f"Error {response.status} from API")
+            except Exception as err:
+                _LOGGER.error(f"Exception during chlorinator sensor update: {err}")
+                raise UpdateFailed(f"Update error: {err}")
 
 async def async_setup(hass: HomeAssistant, config: ConfigType | None) -> bool:
     """Set up the INSNRG Chlorinator component."""
     _LOGGER.info("Setting up INSNRG Chlorinator")
     # Perform any global setup here, if needed.
     hass.data.setdefault(DOMAIN, {})
-    # Register the manual update service
-    hass.services.async_register(DOMAIN, "update_sensors", update_sensors_service)
     return True
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry):
     """Set up INSNRG Chlorinator from a config entry."""
-    _LOGGER.info("Setting up entry for INSNRG Chlorinator with entry_id: %s", entry.entry_id)
-    hass.data[DOMAIN][entry.entry_id] = {"data": entry.data, "sensors": []}
+    _LOGGER.info("Setting up entry for INSNRG Chlorinator with entry_id: %s", config_entry.entry_id)
+
+        # Set up your coordinator
+    coordinator = InsnrgChlorinatorCoordinator(
+        hass,
+        api_url="https://imnwf40hng.execute-api.us-east-2.amazonaws.com/prod/actionApi",
+        system_id=config_entry.data["system_id"],
+        token=config_entry.data["bearer_token"],
+    )
+    _LOGGER.info("Coordinator: %s", coordinator)
+
+    # Fetch initial data
+    await coordinator.async_config_entry_first_refresh()
+
+    hass.data[DOMAIN][config_entry.entry_id] = {
+        "data": config_entry.data,
+        "coordinator": coordinator,
+        "sensors": []
+    }
 
     # Set up sensors
     _LOGGER.info("Creating tasks for sensor setup")
-    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    await hass.config_entries.async_forward_entry_setups(config_entry, PLATFORMS)
 
     # Verify that sensors are set up correctly by adding a check after forward_entry_setups
-    sensors = hass.data[DOMAIN][entry.entry_id]["sensors"]
+    sensors = hass.data[DOMAIN][config_entry.entry_id]["sensors"]
     if not sensors:
-        _LOGGER.warning("No sensors were set up for entry ID: %s", entry.entry_id)
+        _LOGGER.warning("No sensors were set up for entry ID: %s", config_entry.entry_id)
     else:
         # Log each sensor's name and current state
         sensor_info = ", ".join([f"{sensor.name} (state: {sensor.state})" for sensor in sensors])
-        _LOGGER.info("Sensors set up for entry ID %s: %s", entry.entry_id, sensor_info)
-
-    # Schedule daily updates
-    async_track_time_interval(hass, lambda now: update_sensors(hass, entry), timedelta(days=1))
-
-    # Initial update
-    await update_sensors(hass, entry)
+        _LOGGER.info("Sensors set up for entry ID %s: %s", config_entry.entry_id, sensor_info)
 
     return True
 
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
     """Unload a config entry."""
-    await hass.config_entries.async_forward_entry_unload(entry, "sensor")
-    hass.data[DOMAIN].pop(entry.entry_id, None)
-    return True
-
-async def update_sensors(hass: HomeAssistant, entry: ConfigEntry):
-    """Update sensor states by fetching the latest data from the API."""
-    # Fetch and update all sensors associated with the entry
-    sensors = hass.data[DOMAIN][entry.entry_id].get("sensors", [])
-    
-    if not sensors:
-        _LOGGER.warning("No sensors found for entry ID: %s", entry.entry_id)
-        return
-
-    for sensor in sensors:
-        await sensor.async_update()
-        sensor_info = ", ".join([f"{sensor.name} (state: {sensor.state}, UUID: {sensor.unique_id})"])
-        _LOGGER.info("Sensor updated: %s", sensor_info)
+    unload_ok = await hass.config_entries.async_forward_entry_unload(config_entry, "sensor")
+    if unload_ok:
+        hass.data[DOMAIN].pop(config_entry.entry_id, None)
+    return unload_ok
 
 async def update_sensors_service(hass: HomeAssistant, call: ServiceCall):
     """Service to manually trigger a sensor update."""
-    entry_id = call.data.get("entry_id")  # This would require you to pass the entry ID
-    entry = hass.config_entries.async_get_entry(entry_id)
-    if entry is None:
+    entry_id = call.data.get("entry_id")
+    config_entry = hass.config_entries.async_get_entry(entry_id)
+    
+    if config_entry is None:
         _LOGGER.error("Entry ID not found: %s", entry_id)
         return
-    await update_sensors(hass, entry)
+
+    coordinator = hass.data[DOMAIN][config_entry.entry_id]["coordinator"]
+    await coordinator.async_request_refresh()
