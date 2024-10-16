@@ -14,7 +14,7 @@ from homeassistant.core import (
 from homeassistant.const import (
     Platform,
 )
-from .const import DOMAIN
+from .const import DOMAIN, API_URL
 
 PLATFORMS = [Platform.SENSOR]
 _LOGGER = logging.getLogger(__name__)
@@ -24,16 +24,22 @@ class InsnrgChlorinatorCoordinator(DataUpdateCoordinator):
     """Coordinator to manage data updates."""
     _LOGGER.info("Setting up INSNRG Coordinator")
 
-    def __init__(self, hass: HomeAssistant, api_url, system_id, token):
+    def __init__(self, hass: HomeAssistant, api_url, system_id, token, refresh_token, id_token):
         """Initialize the coordinator."""
         super().__init__(hass, _LOGGER, name = DOMAIN, update_interval = SCAN_INTERVAL)
         self.api_url = api_url
         self.system_id = system_id
         self.token = token
+        self.refresh_token = refresh_token
+        self.id_token = id_token
         self.updated = datetime.now().isoformat()
 
     async def _async_update_data(self):
         """Fetch data from the API and return it."""
+        # Check if token has expired, if so, refresh it
+        if self._token_expired():
+            await self._refresh_token()
+
         headers = {"Authorization": f"Bearer {self.token}"}
         body = {
             "systemId": self.system_id,
@@ -57,6 +63,45 @@ class InsnrgChlorinatorCoordinator(DataUpdateCoordinator):
                 _LOGGER.error(f"Exception during chlorinator sensor update: {err}")
                 raise UpdateFailed(f"Update error: {err}")
 
+    def _token_expired(self):
+        """Check if the token has expired. You need to track token expiry time."""
+        # You will need logic here to track when the token expires and check it
+        # Typically, a JWT (access token) has an "exp" claim you can check
+        # This is a placeholder for the actual expiration check
+        return False
+
+    async def _refresh_token(self):
+        """Use the refresh token to get a new access token."""
+        _LOGGER.info("Refreshing access token")
+
+        # Create the request body for token refresh
+        refresh_url = f"https://cognito-idp.us-east-2.amazonaws.com"
+        headers = {
+            "Content-Type": "application/x-amz-json-1.1",
+            "X-Amz-Target": "AWSCognitoIdentityProviderService.InitiateAuth",
+        }
+        payload = {
+            "AuthFlow": "REFRESH_TOKEN_AUTH",
+            "ClientId": "50kmkes69ij352vpq3ec7dfki2",
+            "AuthParameters": {
+                "REFRESH_TOKEN": self.refresh_token
+            }
+        }
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(refresh_url, headers=headers, json=payload) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    self.token = data["AuthenticationResult"]["AccessToken"]
+                    _LOGGER.info("Access token refreshed successfully")
+                elif response.status_code == 400 or response.status_code == 401:
+                    # Token refresh failed, likely due to expired or invalid refresh token
+                    _LOGGER.error("Refresh token expired, prompting user for reauthentication.")
+                    # Here you could trigger a reauthentication process or raise an error
+                else:
+                    _LOGGER.error("Failed to refresh access token")
+                    raise UpdateFailed(f"Error {response.status} refreshing token")
+
 async def async_setup(hass: HomeAssistant, config: ConfigType | None) -> bool:
     """Set up the INSNRG Chlorinator component."""
     _LOGGER.info("Setting up INSNRG Chlorinator")
@@ -68,12 +113,19 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry):
     """Set up INSNRG Chlorinator from a config entry."""
     _LOGGER.info("Setting up entry for INSNRG Chlorinator with entry_id: %s", config_entry.entry_id)
 
-        # Set up your coordinator
+    # Extract tokens from config_entry
+    access_token = config_entry.data.get("access_token")
+    refresh_token = config_entry.data.get("refresh_token")
+    id_token = config_entry.data.get("id_token")
+
+    # Set up your coordinator
     coordinator = InsnrgChlorinatorCoordinator(
         hass,
-        api_url="https://imnwf40hng.execute-api.us-east-2.amazonaws.com/prod/actionApi",
+        api_url=API_URL,
         system_id=config_entry.data["system_id"],
-        token=config_entry.data["bearer_token"],
+        token=access_token,
+        refresh_token=refresh_token,
+        id_token=id_token,  # In case it's needed later
     )
     _LOGGER.info("Coordinator: %s", coordinator)
 

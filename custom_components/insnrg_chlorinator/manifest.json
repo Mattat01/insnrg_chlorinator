@@ -5,6 +5,6 @@
     "config_flow": true,
     "dependencies": [],
     "codeowners": [ "@Mattat01" ],
-    "requirements": [],
+    "requirements": [ "aioboto3", "aiobotocore" ],
     "version": "0.1.0"
 }

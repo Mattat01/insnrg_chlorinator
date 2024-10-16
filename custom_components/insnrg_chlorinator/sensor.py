@@ -14,7 +14,7 @@ SCAN_INTERVAL = timedelta(hours=1)
 async def async_setup_entry(hass, config, async_add_entities) -> None:
     _LOGGER.info("Setting up sensors in sensor.py")
     config_data = hass.config_entries.async_entries(DOMAIN)[0].data
-    token = config_data["bearer_token"]
+    token = config_data["access_token"]
     system_id = config_data["system_id"]
     coordinator = hass.data[DOMAIN][config.entry_id]["coordinator"]
     _LOGGER.info("checking the coordinator is available: %s", coordinator)
