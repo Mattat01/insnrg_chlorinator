@@ -2,6 +2,9 @@ import logging
 import requests
 import aiohttp
 import async_timeout
+import aioboto3
+from pycognito import AWSSRP
+from botocore.exceptions import ClientError
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.helpers.event import async_track_time_interval
@@ -43,9 +46,10 @@ class InsnrgChlorinatorCoordinator(DataUpdateCoordinator):
             await self._refresh_token()
 
         _LOGGER.debug("Access Token: %s", self.token)
+        _LOGGER.debug("ID Token: %s", self.id_token)
         _LOGGER.debug("System ID: %s", self.system_id)
         headers = {
-            "Authorization": f"Bearer {self.token}",
+            "Authorization": f"Bearer {self.id_token}",
             "Origin": "https://www.insnrgapp.com"
         }
         body = {
@@ -71,7 +75,7 @@ class InsnrgChlorinatorCoordinator(DataUpdateCoordinator):
                 raise UpdateFailed(f"Update error: {err}")
 
     def _token_expired(self):
-        """Check if the token has expired. You need to track token expiry time."""
+        """Check if the token has expired."""
         _LOGGER.debug("Testing to determine if Token has expired.")
         return self.expiry < datetime.now()
 
@@ -79,36 +83,48 @@ class InsnrgChlorinatorCoordinator(DataUpdateCoordinator):
         """Use the refresh token to get a new access token."""
         _LOGGER.debug("Refreshing access token")
 
-        # Create the request body for token refresh
-        refresh_url = f"https://cognito-idp.us-east-2.amazonaws.com"
-        headers = {
-            "Content-Type": "application/x-amz-json-1.1",
-            "X-Amz-Target": "AWSCognitoIdentityProviderService.InitiateAuth",
-        }
-        payload = {
-            "AuthFlow": "REFRESH_TOKEN_AUTH",
-            "ClientId": ClientId,
-            "AuthParameters": {
-                "REFRESH_TOKEN": self.refresh_token
-            }
-        }
+        session = aioboto3.Session()
 
-        async with aiohttp.ClientSession() as session:
-            async with session.post(refresh_url, headers=headers, json=payload) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    self.token = data["AuthenticationResult"]["AccessToken"]
-                    self.expiry = timedelta(seconds=data["AuthenticationResult"]['ExpiresIn']) + datetime.now()
-                    self.refresh_token = data["AuthenticationResult"]["RefreshToken"]
-                    self.id_token = data["AuthenticationResult"]["IdToken"]
-                    _LOGGER.debug("Token Refresh Response: %s", response)
-                elif response.status_code == 400 or response.status_code == 401:
-                    # Token refresh failed, likely due to expired or invalid refresh token
-                    _LOGGER.error("Refresh token expired, prompting user for reauthentication.")
-                    # Here you could trigger a reauthentication process or raise an error
-                else:
-                    _LOGGER.error("Failed to refresh access token")
-                    raise UpdateFailed(f"Error {response.status} refreshing token")
+        try:
+            async with session.client('cognito-idp', region_name='us-east-2') as client:
+                _LOGGER.debug("Starting token refresh using REFRESH_TOKEN_AUTH")
+
+                # Make the token refresh request
+                response = await client.initiate_auth(
+                    ClientId=ClientId,
+                    AuthFlow='REFRESH_TOKEN_AUTH',
+                    AuthParameters={
+                        'REFRESH_TOKEN': self.refresh_token
+                    }
+                )
+
+                _LOGGER.debug("Token refresh response received: %s", response)
+
+                # Extract new tokens from the response
+                auth_result = response['AuthenticationResult']
+                self.token = auth_result['AccessToken']
+                self.expiry = timedelta(seconds=auth_result['ExpiresIn']) + datetime.now()
+                self.id_token = auth_result['IdToken']
+
+                # Refresh token remains the same, unless provided
+                if 'RefreshToken' in auth_result:
+                    self.refresh_token = auth_result['RefreshToken']
+
+                _LOGGER.debug("Token refresh successful: New access token and expiry retrieved")
+
+        except ClientError as e:
+            error_code = e.response['Error']['Code']
+            if error_code in ('NotAuthorizedException', 'InvalidRefreshTokenException'):
+                _LOGGER.error("Refresh token expired or invalid, prompting user for reauthentication.")
+                # Here, you can trigger a reauthentication process or return an error
+                raise UpdateFailed("Refresh token invalid or expired. Reauthentication required.")
+            else:
+                _LOGGER.error(f"ClientError during token refresh: {e}")
+                raise UpdateFailed(f"Error refreshing token: {e}")
+    
+        except Exception as e:
+            _LOGGER.error(f"Unexpected error during token refresh: {e}")
+            raise UpdateFailed(f"Unexpected error refreshing token: {e}")
 
 async def async_setup(hass: HomeAssistant, config: ConfigType | None) -> bool:
     """Set up the INSNRG Chlorinator component."""

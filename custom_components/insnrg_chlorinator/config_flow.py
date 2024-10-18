@@ -58,9 +58,10 @@ class InsnrgChlorinatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         _LOGGER.debug("Processing password challenge")
 
                         challenge_responses = aws_srp.process_challenge(
-                            response['ChallengeParameters'],
+                            response['ChallengeParameters'],    # This should include PASSWORD_CLAIM_SECRET_BLOCK, PASSWORD_CLAIM_SIGNATURE, TIMESTAMP, USERNAME (as a UUID)
                             auth_params
                         )
+                        _LOGGER.debug("ChallengeParameters: %s", response['ChallengeParameters'])
 
                         response = await client.respond_to_auth_challenge(
                             ClientId=ClientId,
