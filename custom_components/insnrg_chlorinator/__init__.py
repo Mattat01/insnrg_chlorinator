@@ -1,5 +1,4 @@
 import logging
-import requests
 import aiohttp
 import async_timeout
 import aioboto3
@@ -45,9 +44,6 @@ class InsnrgChlorinatorCoordinator(DataUpdateCoordinator):
             _LOGGER.debug("Refreshing Access Token")
             await self._refresh_token()
 
-        _LOGGER.debug("Access Token: %s", self.token)
-        _LOGGER.debug("ID Token: %s", self.id_token)
-        _LOGGER.debug("System ID: %s", self.system_id)
         headers = {
             "Authorization": f"Bearer {self.id_token}",
             "Origin": "https://www.insnrgapp.com"
@@ -142,16 +138,17 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry):
     expiry = config_entry.data.get("expiry")
     refresh_token = config_entry.data.get("refresh_token")
     id_token = config_entry.data.get("id_token")
+    system_id = config_entry.data.get("system_id")
 
-    # Set up your coordinator
+    # Set up the coordinator
     coordinator = InsnrgChlorinatorCoordinator(
         hass,
         api_url=API_URL,
-        system_id=config_entry.data["system_id"],
+        system_id=system_id,
         token=access_token,
         expiry=expiry,
         refresh_token=refresh_token,
-        id_token=id_token,  # In case it's needed later
+        id_token=id_token,
     )
     _LOGGER.debug("Coordinator: %s", coordinator)
 

@@ -1,10 +1,11 @@
 import voluptuous as vol
 import logging
+import aiohttp
+import async_timeout
 from datetime import datetime, timedelta
 from homeassistant import config_entries
 from homeassistant.core import callback
-import homeassistant.helpers.config_validation as cv
-from .const import DOMAIN, ClientId, PoolId
+from .const import DOMAIN, ClientId, PoolId, API_SystemID_URL
 import aioboto3
 from pycognito import AWSSRP
 from botocore.exceptions import ClientError
@@ -26,7 +27,6 @@ class InsnrgChlorinatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
             username = user_input["Username"]
             password = user_input["Password"]
-            system_id = user_input["system_id"]
 
             session = aioboto3.Session()
 
@@ -79,7 +79,9 @@ class InsnrgChlorinatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     refresh_token = auth_result['RefreshToken']
 
                     # Log success
-                    _LOGGER.debug("Authentication successful, tokens retrieved")
+                    _LOGGER.debug("Authentication successful, tokens retrieved. Getting System ID")
+                    
+                    system_id = await self._get_system_id(id_token)
 
                     # Store tokens and additional data
                     return self.async_create_entry(
@@ -108,7 +110,6 @@ class InsnrgChlorinatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         schema = vol.Schema({
             vol.Required("Username", default=""): str,
             vol.Required("Password", default=""): str,
-            vol.Required("system_id", default="insnrgbcddc2f2f2ed"): str,
             vol.Required("high_ph", default=7.8): vol.Coerce(float),
             vol.Required("low_ph", default=7.0): vol.Coerce(float),
             vol.Required("high_orp", default=800): vol.Coerce(int),
@@ -116,3 +117,31 @@ class InsnrgChlorinatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         })
 
         return self.async_show_form(step_id="user", data_schema=schema, errors=errors)
+
+    async def _get_system_id(self, id_token):
+        headers = {
+            "Authorization": f"Bearer {id_token}"
+        }
+
+        async with aiohttp.ClientSession() as session:
+            try:
+                async with async_timeout.timeout(10):
+                    async with session.post(API_SystemID_URL, headers=headers) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            _LOGGER.debug("Obtaining SystemID")
+            
+                            # Check if the response contains the 'data' field and it's a list with at least one item
+                            if "data" in data and isinstance(data["data"], list):
+                                # Iterate through the items to find the first one with isActive == True
+                                for item in data["data"]:
+                                    if item.get("isActive"):
+                                        system_id = item.get("systemId")
+                                        _LOGGER.debug("Found Active systemId: %s", system_id)
+                                        return system_id
+                            _LOGGER.warning("No systemId found in response data.")
+                            return None  # Return None if no systemId is found
+                        else:
+                            _LOGGER.error("Error fetching data from API: %s", await response.text())
+            except Exception as err:
+                _LOGGER.error(f"Exception during chlorinator SystemID retrieval: {err}")
