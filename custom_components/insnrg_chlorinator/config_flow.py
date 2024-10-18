@@ -2,11 +2,11 @@ import voluptuous as vol
 import logging
 import aiohttp
 import async_timeout
+import aioboto3
 from datetime import datetime, timedelta
 from homeassistant import config_entries
 from homeassistant.core import callback
 from .const import DOMAIN, ClientId, PoolId, API_SystemID_URL
-import aioboto3
 from pycognito import AWSSRP
 from botocore.exceptions import ClientError
 
@@ -23,7 +23,7 @@ class InsnrgChlorinatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors = {}
         if user_input is not None:
             # Log input for debugging
-            _LOGGER.debug("Received user input: %s", user_input)
+            #_LOGGER.debug("Received user input: %s", user_input)
 
             username = user_input["Username"]
             password = user_input["Password"]
@@ -44,7 +44,7 @@ class InsnrgChlorinatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     )
 
                     auth_params = aws_srp.get_auth_params()
-                    _LOGGER.debug("Generated auth params: %s", auth_params)
+                    #_LOGGER.debug("Generated auth params: %s", auth_params)
 
                     response = await client.initiate_auth(
                         ClientId=ClientId,
@@ -52,7 +52,8 @@ class InsnrgChlorinatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         AuthParameters=auth_params
                     )
 
-                    _LOGGER.debug("Received auth response: %s", response)
+                    _LOGGER.debug("Received auth response")
+                    #_LOGGER.debug("Auth response contents: %s", response)
 
                     if response.get('ChallengeName') == 'PASSWORD_VERIFIER':
                         _LOGGER.debug("Processing password challenge")
@@ -61,7 +62,7 @@ class InsnrgChlorinatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                             response['ChallengeParameters'],    # This should include PASSWORD_CLAIM_SECRET_BLOCK, PASSWORD_CLAIM_SIGNATURE, TIMESTAMP, USERNAME (as a UUID)
                             auth_params
                         )
-                        _LOGGER.debug("ChallengeParameters: %s", response['ChallengeParameters'])
+                        #_LOGGER.debug("ChallengeParameters: %s", response['ChallengeParameters'])
 
                         response = await client.respond_to_auth_challenge(
                             ClientId=ClientId,
@@ -69,7 +70,7 @@ class InsnrgChlorinatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                             ChallengeResponses=challenge_responses
                         )
 
-                        _LOGGER.debug("Challenge response received: %s", response)
+                        #_LOGGER.debug("Challenge response received: %s", response)
 
                     # Extract tokens
                     auth_result = response['AuthenticationResult']
@@ -93,10 +94,6 @@ class InsnrgChlorinatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                             "id_token": id_token,
                             "refresh_token": refresh_token,
                             "system_id": system_id,
-                            "high_ph": user_input["high_ph"],
-                            "low_ph": user_input["low_ph"],
-                            "high_orp": user_input["high_orp"],
-                            "low_orp": user_input["low_orp"]
                         }
                     )
             except ClientError as e:
@@ -110,10 +107,6 @@ class InsnrgChlorinatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         schema = vol.Schema({
             vol.Required("Username", default=""): str,
             vol.Required("Password", default=""): str,
-            vol.Required("high_ph", default=7.8): vol.Coerce(float),
-            vol.Required("low_ph", default=7.0): vol.Coerce(float),
-            vol.Required("high_orp", default=800): vol.Coerce(int),
-            vol.Required("low_orp", default=600): vol.Coerce(int),
         })
 
         return self.async_show_form(step_id="user", data_schema=schema, errors=errors)
@@ -137,7 +130,7 @@ class InsnrgChlorinatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                                 for item in data["data"]:
                                     if item.get("isActive"):
                                         system_id = item.get("systemId")
-                                        _LOGGER.debug("Found Active systemId: %s", system_id)
+                                        _LOGGER.debug("Found active systemId: %s", system_id)
                                         return system_id
                             _LOGGER.warning("No systemId found in response data.")
                             return None  # Return None if no systemId is found

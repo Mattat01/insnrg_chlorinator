@@ -17,7 +17,6 @@ async def async_setup_entry(hass, config, async_add_entities) -> None:
     token = config_data["access_token"]
     system_id = config_data["system_id"]
     coordinator = hass.data[DOMAIN][config.entry_id]["coordinator"]
-    _LOGGER.debug("checking the coordinator is available: %s", coordinator)
 
     sensors = [
         InsnrgChlorinatorSensor(coordinator, "Current pH", token, system_id, API_URL, "currentPh"),
