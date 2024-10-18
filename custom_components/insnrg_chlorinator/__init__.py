@@ -78,6 +78,7 @@ async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> 
 
 async def update_sensors_service(hass: HomeAssistant, call: ServiceCall):
     """Service to manually trigger a sensor update."""
+    # Does not work yet
     entry_id = call.data.get("entry_id")
     config_entry = hass.config_entries.async_get_entry(entry_id)
     
@@ -86,4 +87,4 @@ async def update_sensors_service(hass: HomeAssistant, call: ServiceCall):
         return
 
     coordinator = hass.data[DOMAIN][config_entry.entry_id]["coordinator"]
-    await coordinator.async_request_refresh()
+    await coordinator._async_update_data()

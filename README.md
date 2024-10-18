@@ -21,3 +21,32 @@ You could use the chemical levels to automate turning your pump on or off (with 
 If you have use cases that require other data to be brought into the integration feel free to ask, and I'll look into it. 
 I don't particularly want to let the integration make changes to your system, like you can from the app (such as changing chemical set points, timers, etc.).
 If someone else wants to make this a fully fledged API interface, you are welcome to fork this repo, or take it over.
+
+# Installing the INSNRG Chlorinator Custom Integration in Home Assistant
+This guide will walk you through the steps to install and set up the custom INSNRG Chlorinator integration in Home Assistant.
+
+## Step-by-Step Installation
+### 1. Download the Custom Integration
+Download or clone the contents of custom_components/insnrg_chlorinator.
+
+### 2. Copy the Files to Home Assistant
+Using File Editor, SSH, or another method, navigate to your Home Assistant custom_components folder. 
+If it doesn’t exist, create it in the /homeassistant directory.
+Create a new folder within custom_components named ha_insnrg_chlorinator.
+Copy the copied files into this new folder.
+
+### 3. Restart Home Assistant
+After copying the integration files, restart Home Assistant to load the new integration.
+
+### 4. Install the Integration in Home Assistant
+After restarting, go to Settings ? Devices & Services.
+Click on Add Integration and search for "INSNRG Chlorinator"
+Select the integration and follow the prompts to enter the email and password you use to log in to https://www.insnrgapp.com.
+The integration will now be set up, and sensors for your chlorinator’s pH and ORP will be created and updated hourly.
+
+## Troubleshooting
+### No Sensors Detected: 
+Ensure that your credentials (email and password) are correct (test them on the insnrgapp site) and that your chlorinator is visible on the insnrgapp site.
+### Token Expiry Issues: 
+If your access token expires frequently, the integration should automatically refresh it using the refresh token. If this fails, check the logs for error messages about token refresh failures.
+You can find logs under Settings ? System ? Logs to view any errors or issues related to the integration. Please report them on the issues tab of this repo.
