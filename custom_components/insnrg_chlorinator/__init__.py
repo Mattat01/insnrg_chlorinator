@@ -14,7 +14,7 @@ from homeassistant.core import (
 from homeassistant.const import (
     Platform,
 )
-from .const import DOMAIN, API_URL
+from .const import DOMAIN, API_URL, ClientId
 
 PLATFORMS = [Platform.SENSOR]
 _LOGGER = logging.getLogger(__name__)
@@ -22,14 +22,15 @@ SCAN_INTERVAL = timedelta(hours=1)
 
 class InsnrgChlorinatorCoordinator(DataUpdateCoordinator):
     """Coordinator to manage data updates."""
-    _LOGGER.info("Setting up INSNRG Coordinator")
+    _LOGGER.debug("Setting up INSNRG Coordinator")
 
-    def __init__(self, hass: HomeAssistant, api_url, system_id, token, refresh_token, id_token):
+    def __init__(self, hass: HomeAssistant, api_url, system_id, token, expiry, refresh_token, id_token):
         """Initialize the coordinator."""
         super().__init__(hass, _LOGGER, name = DOMAIN, update_interval = SCAN_INTERVAL)
         self.api_url = api_url
         self.system_id = system_id
         self.token = token
+        self.expiry = expiry
         self.refresh_token = refresh_token
         self.id_token = id_token
         self.updated = datetime.now().isoformat()
@@ -38,9 +39,15 @@ class InsnrgChlorinatorCoordinator(DataUpdateCoordinator):
         """Fetch data from the API and return it."""
         # Check if token has expired, if so, refresh it
         if self._token_expired():
+            _LOGGER.debug("Refreshing Access Token")
             await self._refresh_token()
 
-        headers = {"Authorization": f"Bearer {self.token}"}
+        _LOGGER.debug("Access Token: %s", self.token)
+        _LOGGER.debug("System ID: %s", self.system_id)
+        headers = {
+            "Authorization": f"Bearer {self.token}",
+            "Origin": "https://www.insnrgapp.com"
+        }
         body = {
             "systemId": self.system_id,
             "params": "ChemistryScreen",
@@ -54,7 +61,7 @@ class InsnrgChlorinatorCoordinator(DataUpdateCoordinator):
                         if response.status == 200:
                             data = await response.json()
                             self.updated = datetime.now().isoformat()
-                            _LOGGER.info("updating chlorinator")
+                            _LOGGER.debug("updating chlorinator")
                             return data.get("poolChemistry", {})
                         else:
                             _LOGGER.error("Error fetching data from API: %s", await response.text())
@@ -65,14 +72,12 @@ class InsnrgChlorinatorCoordinator(DataUpdateCoordinator):
 
     def _token_expired(self):
         """Check if the token has expired. You need to track token expiry time."""
-        # You will need logic here to track when the token expires and check it
-        # Typically, a JWT (access token) has an "exp" claim you can check
-        # This is a placeholder for the actual expiration check
-        return False
+        _LOGGER.debug("Testing to determine if Token has expired.")
+        return self.expiry < datetime.now()
 
     async def _refresh_token(self):
         """Use the refresh token to get a new access token."""
-        _LOGGER.info("Refreshing access token")
+        _LOGGER.debug("Refreshing access token")
 
         # Create the request body for token refresh
         refresh_url = f"https://cognito-idp.us-east-2.amazonaws.com"
@@ -82,7 +87,7 @@ class InsnrgChlorinatorCoordinator(DataUpdateCoordinator):
         }
         payload = {
             "AuthFlow": "REFRESH_TOKEN_AUTH",
-            "ClientId": "50kmkes69ij352vpq3ec7dfki2",
+            "ClientId": ClientId,
             "AuthParameters": {
                 "REFRESH_TOKEN": self.refresh_token
             }
@@ -93,7 +98,10 @@ class InsnrgChlorinatorCoordinator(DataUpdateCoordinator):
                 if response.status == 200:
                     data = await response.json()
                     self.token = data["AuthenticationResult"]["AccessToken"]
-                    _LOGGER.info("Access token refreshed successfully")
+                    self.expiry = timedelta(seconds=data["AuthenticationResult"]['ExpiresIn']) + datetime.now()
+                    self.refresh_token = data["AuthenticationResult"]["RefreshToken"]
+                    self.id_token = data["AuthenticationResult"]["IdToken"]
+                    _LOGGER.debug("Token Refresh Response: %s", response)
                 elif response.status_code == 400 or response.status_code == 401:
                     # Token refresh failed, likely due to expired or invalid refresh token
                     _LOGGER.error("Refresh token expired, prompting user for reauthentication.")
@@ -104,17 +112,18 @@ class InsnrgChlorinatorCoordinator(DataUpdateCoordinator):
 
 async def async_setup(hass: HomeAssistant, config: ConfigType | None) -> bool:
     """Set up the INSNRG Chlorinator component."""
-    _LOGGER.info("Setting up INSNRG Chlorinator")
+    _LOGGER.debug("Setting up INSNRG Chlorinator")
     # Perform any global setup here, if needed.
     hass.data.setdefault(DOMAIN, {})
     return True
 
 async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry):
     """Set up INSNRG Chlorinator from a config entry."""
-    _LOGGER.info("Setting up entry for INSNRG Chlorinator with entry_id: %s", config_entry.entry_id)
+    _LOGGER.debug("Setting up entry for INSNRG Chlorinator with entry_id: %s", config_entry.entry_id)
 
     # Extract tokens from config_entry
     access_token = config_entry.data.get("access_token")
+    expiry = config_entry.data.get("expiry")
     refresh_token = config_entry.data.get("refresh_token")
     id_token = config_entry.data.get("id_token")
 
@@ -124,13 +133,16 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry):
         api_url=API_URL,
         system_id=config_entry.data["system_id"],
         token=access_token,
+        expiry=expiry,
         refresh_token=refresh_token,
         id_token=id_token,  # In case it's needed later
     )
-    _LOGGER.info("Coordinator: %s", coordinator)
+    _LOGGER.debug("Coordinator: %s", coordinator)
 
     # Fetch initial data
     await coordinator.async_config_entry_first_refresh()
+
+    _LOGGER.debug("First refresh complete")
 
     hass.data[DOMAIN][config_entry.entry_id] = {
         "data": config_entry.data,
@@ -139,7 +151,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry):
     }
 
     # Set up sensors
-    _LOGGER.info("Creating tasks for sensor setup")
+    _LOGGER.debug("Creating tasks for sensor setup")
     await hass.config_entries.async_forward_entry_setups(config_entry, PLATFORMS)
 
     # Verify that sensors are set up correctly by adding a check after forward_entry_setups
@@ -149,7 +161,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry):
     else:
         # Log each sensor's name and current state
         sensor_info = ", ".join([f"{sensor.name} (state: {sensor.state})" for sensor in sensors])
-        _LOGGER.info("Sensors set up for entry ID %s: %s", config_entry.entry_id, sensor_info)
+        _LOGGER.debug("Sensors set up for entry ID %s: %s", config_entry.entry_id, sensor_info)
 
     return True
 
