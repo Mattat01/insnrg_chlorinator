@@ -63,7 +63,9 @@ class InsnrgChlorinatorCoordinator(DataUpdateCoordinator):
 
     def _token_expired(self):
         """Check if the token has expired."""
-        if self.expiry < datetime.now():
+        expiry_datetime = datetime.strptime(self.expiry, "%Y-%m-%dT%H:%M:%S.%f")
+        _LOGGER.debug(expiry_datetime)
+        if expiry_datetime < datetime.now():
             _LOGGER.debug("Token has expired")
             return True
         else:
