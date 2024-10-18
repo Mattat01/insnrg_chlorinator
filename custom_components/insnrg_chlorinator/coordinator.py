@@ -63,8 +63,18 @@ class InsnrgChlorinatorCoordinator(DataUpdateCoordinator):
 
     def _token_expired(self):
         """Check if the token has expired."""
-        expiry_datetime = datetime.strptime(self.expiry, "%Y-%m-%dT%H:%M:%S.%f")
-        _LOGGER.debug(expiry_datetime)
+
+        # If expiry is a string, convert it to a datetime object
+        if isinstance(self.expiry, str):
+            try:
+                expiry_datetime = datetime.strptime(self.expiry, "%Y-%m-%dT%H:%M:%S.%f")
+                _LOGGER.debug("Converted expiry from string to datetime: %s", expiry_datetime)
+            except ValueError as e:
+                _LOGGER.error(f"Failed to convert expiry string to datetime: {e}")
+                return True  # Handle error by treating token as expired
+        else:
+            expiry_datetime = self.expiry
+
         if expiry_datetime < datetime.now():
             _LOGGER.debug("Token has expired")
             return True
