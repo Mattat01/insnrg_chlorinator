@@ -11,7 +11,7 @@ from homeassistant.const import (
 from .const import DOMAIN, API_URL
 from .coordinator import InsnrgChlorinatorCoordinator  # Import the new coordinator
 
-PLATFORMS = [Platform.SENSOR]
+PLATFORMS = [Platform.SENSOR] # would need to update if including binary sensor platform
 _LOGGER = logging.getLogger(__name__)
 
 async def async_setup(hass: HomeAssistant, config: ConfigType | None) -> bool:
@@ -75,16 +75,3 @@ async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> 
     if unload_ok:
         hass.data[DOMAIN].pop(config_entry.entry_id, None)
     return unload_ok
-
-async def update_sensors_service(hass: HomeAssistant, call: ServiceCall):
-    """Service to manually trigger a sensor update."""
-    # Does not work yet
-    entry_id = call.data.get("entry_id")
-    config_entry = hass.config_entries.async_get_entry(entry_id)
-    
-    if config_entry is None:
-        _LOGGER.error("Entry ID not found: %s", entry_id)
-        return
-
-    coordinator = hass.data[DOMAIN][config_entry.entry_id]["coordinator"]
-    await coordinator._async_update_data()

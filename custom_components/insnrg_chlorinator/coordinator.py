@@ -2,12 +2,12 @@ import logging
 import aiohttp
 import async_timeout
 import aioboto3
-from botocore.exceptions import ClientError
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+import json
 from datetime import datetime, timedelta
-from homeassistant.core import (
-    HomeAssistant,
-)
+from botocore.exceptions import ClientError
+from homeassistant.exceptions import ConfigEntryAuthFailed
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.core import HomeAssistant
 from .const import DOMAIN, ClientId
 
 _LOGGER = logging.getLogger(__name__)
@@ -19,7 +19,7 @@ class InsnrgChlorinatorCoordinator(DataUpdateCoordinator):
 
     def __init__(self, hass: HomeAssistant, api_url, system_id, token, expiry, refresh_token, id_token):
         """Initialize the coordinator."""
-        super().__init__(hass, _LOGGER, name = DOMAIN, update_interval = SCAN_INTERVAL)
+        super().__init__(hass, _LOGGER, name = DOMAIN, update_interval = SCAN_INTERVAL) # TEST adding ", always_update = False" after scan interval
         self.api_url = api_url
         self.system_id = system_id
         self.token = token
@@ -35,31 +35,57 @@ class InsnrgChlorinatorCoordinator(DataUpdateCoordinator):
             _LOGGER.debug("Refreshing Access Token")
             await self._refresh_token()
 
-        headers = {
-            "Authorization": f"Bearer {self.id_token}",
-            "Origin": "https://www.insnrgapp.com"
-        }
-        body = {
-            "systemId": self.system_id,
-            "params": "ChemistryScreen",
-            "action": "view"
-        }
+        # Step 1: Update timers
+        _LOGGER.debug("Updating timers.")
+        timers = await self._get_timers()
+    
+        if timers:
+            # Step 2: Check for active timers where chlorinator == True
+            current_time = datetime.now().strftime("%H:%M")
+            active_timer_found = True #Force True for testing, usually set to False ##############################
+    
+            for timer in timers:
+                start_time = timer.get("start")
+                stop_time = timer.get("stop")
+                chlorinator = timer.get("chlorinator", 0)
+                enabled = timer.get("enable", 0)
 
-        async with aiohttp.ClientSession() as session:
-            try:
-                async with async_timeout.timeout(10):
-                    async with session.post(self.api_url, headers=headers, json=body) as response:
-                        if response.status == 200:
-                            data = await response.json()
-                            self.updated = datetime.now().isoformat()
-                            _LOGGER.debug("Updating chemistry")
-                            return data.get("poolChemistry", {})
-                        else:
-                            _LOGGER.error("Error fetching data from API: %s", await response.text())
-                            raise UpdateFailed(f"Error {response.status} from API")
-            except Exception as err:
-                _LOGGER.error(f"Exception during chlorinator sensor update: {err}")
-                raise UpdateFailed(f"Update error: {err}")
+                if enabled and chlorinator and start_time <= current_time <= stop_time:
+                    _LOGGER.debug(f"Active timer found: Timer {timer['timerNumber']} from {start_time} to {stop_time}.")
+                    active_timer_found = True
+                    break
+
+            # Step 3: If an active timer is found, update chemistry sensors
+            if active_timer_found:
+                _LOGGER.debug("Updating pool chemistry sensors.")
+                pool_chemistry = await self._get_chemistry()
+# Think about this logic...        
+                if not pool_chemistry:
+                    _LOGGER.error("Failed to retrieve pool chemistry data.")
+            else:
+                _LOGGER.debug("No active timer found or chlorinator is associated with a timer. Skipping chemistry update.")
+        else:
+            _LOGGER.warning("No timers found.")
+            _LOGGER.debug("Unable to determine if the chlorinator is running. Updating pool chemistry sensors anyway.")
+            pool_chemistry = await self._get_chemistry()
+        
+            if not pool_chemistry:
+                _LOGGER.error("Failed to retrieve pool chemistry data.")
+
+        # Step 4: Update temperature
+        _LOGGER.debug("Updating pool temperature.")
+        temperature = await self._get_temp()
+        if not temperature:
+            _LOGGER.warning("Failed to retrieve temperature data or your reading is 0 degrees.") 
+        else:
+            _LOGGER.debug("Retrieved Temp: %s", temperature)
+
+        # Bundle and return all data: timers, temperature, and pool chemistry
+        return {
+            "timers": timers,
+            "temperature": temperature,
+            "pool_chemistry": pool_chemistry
+        }
 
     def _token_expired(self):
         """Check if the token has expired."""
@@ -117,7 +143,8 @@ class InsnrgChlorinatorCoordinator(DataUpdateCoordinator):
             error_code = e.response['Error']['Code']
             if error_code in ('NotAuthorizedException', 'InvalidRefreshTokenException'):
                 _LOGGER.error("Refresh token expired or invalid, prompting user for reauthentication.")
-                # Here, you can trigger a reauthentication process or return an error
+#       Consider failure messages and handle to prompt credential check instead of UpdateFailed.
+#                raise ConfigEntryAuthFailed("Could not log in, please check your email and password.") from e
                 raise UpdateFailed("Refresh token invalid or expired. Reauthentication required.")
             else:
                 _LOGGER.error(f"ClientError during token refresh: {e}")
@@ -126,3 +153,121 @@ class InsnrgChlorinatorCoordinator(DataUpdateCoordinator):
         except Exception as e:
             _LOGGER.error(f"Unexpected error during token refresh: {e}")
             raise UpdateFailed(f"Unexpected error refreshing token: {e}")
+
+    async def _get_timers(self):
+        
+        headers = {
+            "Authorization": f"Bearer {self.id_token}",
+        }
+        body = {
+            "systemId": self.system_id,
+            "params": "SetTimerAppliance",
+            "action": "view"
+        }
+
+        async with aiohttp.ClientSession() as session:
+            try:
+                async with async_timeout.timeout(10):
+                    async with session.post(self.api_url, headers=headers, json=body) as response:
+                        if response.status == 200:
+                            data = await response.json()
+
+                            # Extract timers
+                            timers = data.get("timers", [])
+                            if not timers:
+                                _LOGGER.warning("No timers found")
+                                return None
+
+                            timer_data = []
+                            for timer in timers:
+                                timer_number = timer.get("timerNumber", None)
+                                start_time = timer.get("start", None)
+                                stop_time = timer.get("stop", None)
+                                chlorinator = timer.get("chlorinator", None)
+                                enabled = timer.get("enable", None)
+
+                                timer_info = {
+                                    "timer_number": timer_number,
+                                    "start_time": start_time,
+                                    "stop_time": stop_time,
+                                    "chlorinator": chlorinator == 1,
+                                    "enabled": enabled == 1
+                                }
+                                timer_data.append(timer_info)
+
+                                _LOGGER.debug(f"Timer {timer_number} - Start: {start_time}, Stop: {stop_time}, Chlorinator: {chlorinator}, Enabled: {enabled}")
+
+                            return timer_data
+                        else:
+                            _LOGGER.error(f"Error fetching timers from API: {await response.text()}")
+                            raise UpdateFailed(f"Error {response.status} from API")
+            except Exception as err:
+                _LOGGER.error(f"Exception during timers update: {err}")
+                raise UpdateFailed(f"Update error: {err}")
+
+    async def _get_temp(self):
+        
+        headers = {
+            "Authorization": f"Bearer {self.id_token}",
+        }
+        body = {
+            "systemId": self.system_id,
+            "params": "DashboardScreen",
+            "action": "view"
+        }
+
+        async with aiohttp.ClientSession() as session:
+            try:
+                async with async_timeout.timeout(10):
+                    async with session.post(self.api_url, headers=headers, json=body) as response:
+                        if response.status == 200:
+                            data = await response.json()
+
+                            # Extract temp from liveData in system
+                            system_data = data.get("system", {})
+                            live_data = system_data.get("liveData", "{}")
+                            live_data_json = json.loads(live_data)
+                            temp = live_data_json.get("temp", None)
+
+                            if temp is not None:
+                                _LOGGER.debug(f"Temperature from system liveData: {temp}")
+                                return temp
+                            else:
+                                _LOGGER.warning("Temperature not found in liveData")
+                                return 0
+                        else:
+                            _LOGGER.error(f"Error fetching temperature from API: {await response.text()}")
+                            raise UpdateFailed(f"Error {response.status} from API")
+            except Exception as err:
+                _LOGGER.error(f"Exception during temperature update: {err}")
+                raise UpdateFailed(f"Update error: {err}")
+
+    async def _get_chemistry(self):
+        
+        headers = {
+            "Authorization": f"Bearer {self.id_token}",
+        }
+        body = {
+            "systemId": self.system_id,
+            "params": "ChemistryScreen",
+            "action": "view"
+        }
+
+        async with aiohttp.ClientSession() as session:
+            try:
+                async with async_timeout.timeout(10):
+                    async with session.post(self.api_url, headers=headers, json=body) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            self.updated = datetime.now().isoformat()
+                            _LOGGER.debug("Chemistry data gathered")
+                            return data.get("poolChemistry", {})
+                        else:
+                            _LOGGER.error("Error fetching data from API: %s", await response.text())
+                            raise UpdateFailed(f"Error {response.status} from API")
+#            # Ideally, raise the ConfigEntryAuthFailed exception, possibly as below
+#            except ClientError as e:
+#                raise ConfigEntryAuthFailed("Could not log in, please check your email and password.") from e
+            except Exception as err:
+                _LOGGER.error(f"Exception during chlorinator sensor update: {err}")
+                raise UpdateFailed(f"Update error: {err}")
