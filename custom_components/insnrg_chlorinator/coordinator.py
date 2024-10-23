@@ -19,22 +19,23 @@ class InsnrgChlorinatorCoordinator(DataUpdateCoordinator):
 
     def __init__(self, hass: HomeAssistant, api_url, system_id, token, expiry, refresh_token, id_token):
         """Initialize the coordinator."""
-        super().__init__(hass, _LOGGER, name = DOMAIN, update_interval = SCAN_INTERVAL) # TEST adding ", always_update = False" after scan interval
+        super().__init__(hass, _LOGGER, name = DOMAIN, update_interval = SCAN_INTERVAL) 
         self.api_url = api_url
         self.system_id = system_id
         self.token = token
         self.expiry = expiry
         self.refresh_token = refresh_token
         self.id_token = id_token
+        self.last_pool_chemistry = None
         self.updated = datetime.now().isoformat()
 
     async def _async_update_data(self):
         """Fetch data from the API and return it."""
         # Check if token has expired, if so, refresh it
         if self._token_expired():
-            _LOGGER.debug("Refreshing Access Token")
             await self._refresh_token()
 
+        pool_chemistry = None
         # Step 1: Update timers
         _LOGGER.debug("Updating timers.")
         timers = await self._get_timers()
@@ -42,33 +43,30 @@ class InsnrgChlorinatorCoordinator(DataUpdateCoordinator):
         if timers:
             # Step 2: Check for active timers where chlorinator == True
             current_time = datetime.now().strftime("%H:%M")
-            active_timer_found = True #Force True for testing, usually set to False ##############################
+            active_timer_found = False
     
             for timer in timers:
-                start_time = timer.get("start")
-                stop_time = timer.get("stop")
+                start_time = timer.get("start_time")
+                stop_time = timer.get("stop_time")
                 chlorinator = timer.get("chlorinator", 0)
-                enabled = timer.get("enable", 0)
-
+                enabled = timer.get("enabled", 0)
                 if enabled and chlorinator and start_time <= current_time <= stop_time:
-                    _LOGGER.debug(f"Active timer found: Timer {timer['timerNumber']} from {start_time} to {stop_time}.")
+                    _LOGGER.debug(f"Active timer found: Timer {timer['timer_number']} from {start_time} to {stop_time}.")
                     active_timer_found = True
                     break
 
             # Step 3: If an active timer is found, update chemistry sensors
             if active_timer_found:
-                _LOGGER.debug("Updating pool chemistry sensors.")
+                _LOGGER.debug("Updating pool chemical sensors.")
                 pool_chemistry = await self._get_chemistry()
-# Think about this logic...        
+                _LOGGER.debug(f"pool_chemistry is {pool_chemistry}")
                 if not pool_chemistry:
-                    _LOGGER.error("Failed to retrieve pool chemistry data.")
+                    _LOGGER.error("Failed to retrieve pool chemical data.")
             else:
-                _LOGGER.debug("No active timer found or chlorinator is associated with a timer. Skipping chemistry update.")
+                _LOGGER.debug("No active timer found or no chlorinator is associated with a timer. Skipping chemical updates whilst chlorinator is not running.")
         else:
-            _LOGGER.warning("No timers found.")
-            _LOGGER.debug("Unable to determine if the chlorinator is running. Updating pool chemistry sensors anyway.")
+            _LOGGER.debug("Unable to determine if the chlorinator is running. Updating pool chemistry sensors anyway but the values may be inaccurate.")
             pool_chemistry = await self._get_chemistry()
-        
             if not pool_chemistry:
                 _LOGGER.error("Failed to retrieve pool chemistry data.")
 
@@ -76,16 +74,24 @@ class InsnrgChlorinatorCoordinator(DataUpdateCoordinator):
         _LOGGER.debug("Updating pool temperature.")
         temperature = await self._get_temp()
         if not temperature:
-            _LOGGER.warning("Failed to retrieve temperature data or your reading is 0 degrees.") 
+            _LOGGER.info("Failed to retrieve temperature data or your reading is 0 degrees.") 
         else:
             _LOGGER.debug("Retrieved Temp: %s", temperature)
 
         # Bundle and return all data: timers, temperature, and pool chemistry
-        return {
-            "timers": timers,
-            "temperature": temperature,
-            "pool_chemistry": pool_chemistry
-        }
+        if pool_chemistry:
+            return {
+                "timers": timers,
+                "temperature": temperature,
+                "pool_chemistry": pool_chemistry
+            }
+        elif not self.last_pool_chemistry:
+            _LOGGER.warning("Not using pool_chemistry, as the chlorinator is off and may be inaccurate.")
+            return {
+                "timers": timers,
+                "temperature": temperature,
+                "pool_chemistry": None
+            }
 
     def _token_expired(self):
         """Check if the token has expired."""

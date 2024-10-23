@@ -5,15 +5,15 @@ import async_timeout
 import uuid
 from datetime import datetime, timedelta
 from homeassistant.helpers.event import async_track_time_interval
+from homeassistant.core import callback
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
+    RestoreEntity,
     SensorStateClass,
 )
 from homeassistant.const import (
-    UnitOfElectricCurrent,
     UnitOfElectricPotential, # ORP
-    UnitOfEnergy,
     UnitOfTemperature,
 )
 from .const import DOMAIN
@@ -28,10 +28,10 @@ async def async_setup_entry(hass, config, async_add_entities) -> None:
     sensors = [
         InsnrgpHSensor(coordinator, "Current pH", "currentPh"),
         InsnrgpHSensor(coordinator, "Set Point pH", "setPointPh"),
-        InsnrgpHSensor(coordinator, "pH Connected", "pHConnected"),
+        InsnrgConnectionSensor(coordinator, "pH Connected", "pHConnected"),
         InsnrgOrpSensor(coordinator, "Current ORP", "currentORP"),
         InsnrgOrpSensor(coordinator, "Set Point ORP", "setPointORP"),
-        InsnrgOrpSensor(coordinator, "ORP Connected", "orpConnected"),
+        InsnrgConnectionSensor(coordinator, "ORP Connected", "orpConnected"),
         InsnrgTempSensor(coordinator, "Current Temperature", "temperature")
     ]
 
@@ -56,7 +56,7 @@ async def update_sensors(hass, sensors):
     for sensor in sensors:
         await sensor.async_update()
 
-class InsnrgpHSensor(SensorEntity):
+class InsnrgConnectionSensor(RestoreEntity):
     def __init__(self, coordinator, name, data_key):
         self._coordinator = coordinator
         self._name = name
@@ -65,9 +65,24 @@ class InsnrgpHSensor(SensorEntity):
         self._last_updated = None
         self._unique_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{DOMAIN}_{data_key}"))
 
-    _attr_state_class = SensorStateClass.MEASUREMENT
-    _attr_device_class = SensorDeviceClass.PH
-    _attr_suggested_display_precision = 1
+    async def async_added_to_hass(self):
+        """When entity is added to Home Assistant."""
+        await super().async_added_to_hass()
+        state = await self.async_get_last_state()
+        if not state:
+            _LOGGER.info(f"This is the first time {self._name} has been added to HA. It won't obtain data until after your chlorinator is running for an hour.")
+            return
+        _LOGGER.info(f"Recovering last known state of {self._name} ({state.state}).")
+        self._state = state.state
+
+        # Register the callback to update sensor when coordinator updates
+        self.async_on_remove(self._coordinator.async_add_listener(self._handle_coordinator_update))
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        _LOGGER.debug(f"Updating {self._name} via callback.")
+        # Notify Home Assistant that the sensor's state has been updated
+        self.async_write_ha_state()
 
     @property
     def name(self):
@@ -75,8 +90,14 @@ class InsnrgpHSensor(SensorEntity):
 
     @property
     def state(self):
-        # Consider sanity check on returned value as ORP could be 650000 if initially updated when the chlorinator is off, maybe? 
-        return self._coordinator.data.get("pool_chemistry", {}).get(self._data_key)
+        # Check if pool_chemistry is not None before updating the state
+        pool_chemistry = self._coordinator.data.get("pool_chemistry")
+        if pool_chemistry is None:
+            # If pool_chemistry is None (chlorinator off), don't update the state
+            return self._state  # Return the last known state or None if the entity has not existed before
+        # Update the state based on the pool_chemistry data
+        self._state = pool_chemistry.get(self._data_key)
+        return self._state
 
     @property
     def extra_state_attributes(self):
@@ -89,11 +110,67 @@ class InsnrgpHSensor(SensorEntity):
     def unique_id(self):
         return self._unique_id
 
-    async def async_update(self):
-        """Request an update from the coordinator."""
-        await self._coordinator.async_request_refresh()
+class InsnrgpHSensor(RestoreEntity):
+    def __init__(self, coordinator, name, data_key):
+        self._coordinator = coordinator
+        self._name = name
+        self._state = None
+        self._data_key = data_key
+        self._last_updated = None
+        self._unique_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{DOMAIN}_{data_key}"))
 
-class InsnrgOrpSensor(SensorEntity):
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_device_class = SensorDeviceClass.PH
+    _attr_suggested_display_precision = 1
+
+    async def async_added_to_hass(self):
+        """When entity is added to Home Assistant."""
+        await super().async_added_to_hass()
+        state = await self.async_get_last_state()
+        if not state:
+            _LOGGER.info(f"This is the first time {self._name} has been added to HA. It won't obtain data until after your chlorinator is running for an hour.")
+            return
+        _LOGGER.info(f"Recovering last known state of {self._name} ({state.state}).")
+        self._state = state.state
+
+        # Register the callback to update sensor when coordinator updates
+        self.async_on_remove(self._coordinator.async_add_listener(self._handle_coordinator_update))
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        _LOGGER.debug(f"Updating {self._name} via callback.")
+        # Notify Home Assistant that the sensor's state has been updated
+        self.async_write_ha_state()
+
+    @property
+    def name(self):
+        return f"Chlorinator {self._name}"
+
+    @property
+    def state(self):
+        # Check if pool_chemistry is not None before updating the state
+        pool_chemistry = self._coordinator.data.get("pool_chemistry")
+        if pool_chemistry is None:
+            # If pool_chemistry is None (chlorinator off), don't update the state
+            return self._state  # Return the last known state or None if the entity has not existed before
+        if pool_chemistry.get(self._data_key) > 14:
+            return self._state # if the value is crazy out of range, just use the last known value
+        # Update the state based on the pool_chemistry data
+        self._state = pool_chemistry.get(self._data_key)
+        return self._state
+
+    @property
+    def extra_state_attributes(self):
+        """Return the state attributes."""
+        return {
+            "last_updated": self._coordinator.updated
+        }
+
+    @property
+    def unique_id(self):
+        return self._unique_id
+
+class InsnrgOrpSensor(RestoreEntity):
     def __init__(self, coordinator, name, data_key):
         self._coordinator = coordinator
         self._name = name
@@ -107,14 +184,41 @@ class InsnrgOrpSensor(SensorEntity):
     _attr_native_unit_of_measurement = UnitOfElectricPotential.MILLIVOLT
     _attr_suggested_display_precision = 0
 
+    async def async_added_to_hass(self):
+        """When entity is added to Home Assistant."""
+        await super().async_added_to_hass()
+        state = await self.async_get_last_state()
+        if not state:
+            _LOGGER.info(f"This is the first time {self._name} has been added to HA. It won't obtain data until after your chlorinator is running for an hour.")
+            return
+        _LOGGER.info(f"Recovering last known state of {self._name} ({state.state}).")
+        self._state = state.state
+
+        # Register the callback to update sensor when coordinator updates
+        self.async_on_remove(self._coordinator.async_add_listener(self._handle_coordinator_update))
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        _LOGGER.debug(f"Updating {self._name} via callback.")
+        # Notify Home Assistant that the sensor's state has been updated
+        self.async_write_ha_state()
+
     @property
     def name(self):
         return f"Chlorinator {self._name}"
 
     @property
     def state(self):
-        # Consider sanity check on returned value as ORP could be 650000 if initially updated when the chlorinator is off, maybe? 
-        return self._coordinator.data.get("pool_chemistry", {}).get(self._data_key)
+        # Check if pool_chemistry is not None before updating the state
+        pool_chemistry = self._coordinator.data.get("pool_chemistry")
+        if pool_chemistry is None:
+            # If pool_chemistry is None (chlorinator off), don't update the state
+            return self._state  # Return the last known state or None if the entity has not existed before
+        if pool_chemistry.get(self._data_key) > 2000:
+            return self._state # if the value is crazy out of range, just use the last known value
+        # Update the state based on the pool_chemistry data
+        self._state = pool_chemistry.get(self._data_key)
+        return self._state
 
     @property
     def extra_state_attributes(self):
@@ -127,9 +231,8 @@ class InsnrgOrpSensor(SensorEntity):
     def unique_id(self):
         return self._unique_id
 
-    async def async_update(self):
-        """Request an update from the coordinator."""
-        await self._coordinator.async_request_refresh()
+### We don't need to get the last known state for the following sensors as we take whatever the API provides even if the chlorinator is not running. 
+### For the chemistry page we retun none instead of the result from the API outside chlorination hours because sometimes the data is wrong then, so we just use the last known value.
 
 class InsnrgTempSensor(SensorEntity):
     def __init__(self, coordinator, name, data_key):
@@ -144,6 +247,17 @@ class InsnrgTempSensor(SensorEntity):
     _attr_device_class = SensorDeviceClass.TEMPERATURE
     _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
     _attr_suggested_display_precision = 1
+
+    async def async_added_to_hass(self):
+        """When entity is added to Home Assistant."""
+        # Register the callback to update sensor when coordinator updates
+        self.async_on_remove(self._coordinator.async_add_listener(self._handle_coordinator_update))
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        _LOGGER.debug(f"Updating {self._name} via callback.")
+        # Notify Home Assistant that the sensor's state has been updated
+        self.async_write_ha_state()
 
     @property
     def name(self):
@@ -164,10 +278,6 @@ class InsnrgTempSensor(SensorEntity):
     def unique_id(self):
         return self._unique_id
 
-    async def async_update(self):
-        """Request an update from the coordinator."""
-        await self._coordinator.async_request_refresh()
-
 class InsnrgTimerStartSensor(SensorEntity):
     def __init__(self, coordinator, name, data_key, timer_index):
         self._coordinator = coordinator
@@ -177,6 +287,17 @@ class InsnrgTimerStartSensor(SensorEntity):
         self._data_key = data_key
         self._last_updated = None
         self._unique_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{DOMAIN}_{data_key}_{timer_index}"))
+
+    async def async_added_to_hass(self):
+        """When entity is added to Home Assistant."""
+        # Register the callback to update sensor when coordinator updates
+        self.async_on_remove(self._coordinator.async_add_listener(self._handle_coordinator_update))
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        _LOGGER.debug(f"Updating {self._name} via callback.")
+        # Notify Home Assistant that the sensor's state has been updated
+        self.async_write_ha_state()
 
     @property
     def name(self):
@@ -197,10 +318,6 @@ class InsnrgTimerStartSensor(SensorEntity):
     @property
     def unique_id(self):
         return self._unique_id
-
-    async def async_update(self):
-        """Request an update from the coordinator."""
-        await self._coordinator.async_request_refresh()
 
 class InsnrgTimerStopSensor(SensorEntity):
     def __init__(self, coordinator, name, data_key, timer_index):
@@ -212,6 +329,17 @@ class InsnrgTimerStopSensor(SensorEntity):
         self._last_updated = None
         self._unique_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{DOMAIN}_{data_key}_{timer_index}"))
 
+    async def async_added_to_hass(self):
+        """When entity is added to Home Assistant."""
+        # Register the callback to update sensor when coordinator updates
+        self.async_on_remove(self._coordinator.async_add_listener(self._handle_coordinator_update))
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        _LOGGER.debug(f"Updating {self._name} via callback.")
+        # Notify Home Assistant that the sensor's state has been updated
+        self.async_write_ha_state()
+
     @property
     def name(self):
         return f"INSNRG {self._name}"
@@ -231,10 +359,6 @@ class InsnrgTimerStopSensor(SensorEntity):
     @property
     def unique_id(self):
         return self._unique_id
-
-    async def async_update(self):
-        """Request an update from the coordinator."""
-        await self._coordinator.async_request_refresh()
 
 class InsnrgTimerChlorinatorSensor(SensorEntity):
     def __init__(self, coordinator, name, data_key, timer_index):
@@ -246,6 +370,17 @@ class InsnrgTimerChlorinatorSensor(SensorEntity):
         self._last_updated = None
         self._unique_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{DOMAIN}_{data_key}_{timer_index}"))
 
+    async def async_added_to_hass(self):
+        """When entity is added to Home Assistant."""
+        # Register the callback to update sensor when coordinator updates
+        self.async_on_remove(self._coordinator.async_add_listener(self._handle_coordinator_update))
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        _LOGGER.debug(f"Updating {self._name} via callback.")
+        # Notify Home Assistant that the sensor's state has been updated
+        self.async_write_ha_state()
+
     @property
     def name(self):
         return f"INSNRG {self._name}"
@@ -265,10 +400,6 @@ class InsnrgTimerChlorinatorSensor(SensorEntity):
     @property
     def unique_id(self):
         return self._unique_id
-
-    async def async_update(self):
-        """Request an update from the coordinator."""
-        await self._coordinator.async_request_refresh()
 
 class InsnrgTimerEnabledSensor(SensorEntity):
     def __init__(self, coordinator, name, data_key, timer_index):
@@ -280,6 +411,17 @@ class InsnrgTimerEnabledSensor(SensorEntity):
         self._last_updated = None
         self._unique_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{DOMAIN}_{data_key}_{timer_index}"))
 
+    async def async_added_to_hass(self):
+        """When entity is added to Home Assistant."""
+        # Register the callback to update sensor when coordinator updates
+        self.async_on_remove(self._coordinator.async_add_listener(self._handle_coordinator_update))
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        _LOGGER.debug(f"Updating {self._name} via callback.")
+        # Notify Home Assistant that the sensor's state has been updated
+        self.async_write_ha_state()
+
     @property
     def name(self):
         return f"INSNRG {self._name}"
@@ -299,8 +441,4 @@ class InsnrgTimerEnabledSensor(SensorEntity):
     @property
     def unique_id(self):
         return self._unique_id
-
-    async def async_update(self):
-        """Request an update from the coordinator."""
-        await self._coordinator.async_request_refresh()
 
