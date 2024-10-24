@@ -3,11 +3,11 @@
 This is a small portion of the INSNRG Pool Chlorinator API and collects data from https://www.insnrgapp.com. You cannot set anything through this integration, use the official interface for that, but you can automate other actions and alerts with this information.
 
 The integration takes your INSNRGapp email and password (same as you log into the above website) and logs you in.
-If you set it up, or restart HA whilst your chlorinator/pump is off you will get 'unknown' chemical data, but data should start updating when the chlorinator is running next. 
-The integration does not request chemical data whils the chlorinator is off, as it can be erroneous, but once it has data it will retain it overnight.
-You should remain logged in and get the pool chemistry data every hour (it does not change very quickly and I don't want to spam INSNRG's API every 5 minutes).
-It is possible that the integration will break after a period if certain access tokens expire (I'm not aware that they do), or if INSNRG logs you out of your session.
-The easiest fix is to remove and re-add the integration, but let me know if it happens and why, if you know, so I can try to self-correct it.
+When you set it up for the first time whilst your chlorinator/pump is off you will get 'unknown' chemical data, but data should start updating when the chlorinator is running next. 
+The integration does not request chemical data whils the chlorinator is off, as it can be erroneous, but once it has obtained data for the first time it will retain it overnight and through restarts of HA.
+You should remain logged in and get the pool chemistry data every hour (it does not change very quickly and I don't want to spam INSNRG's API more frequently).
+If the integration loses access to the chlorinator data after a period of time, or if INSNRG logs you out of your session, you may need to reauthenticate.
+If HA does not log you back in automatically, the easiest fix is to remove and re-add the integration, but let me know if it happens and why, if you know, so I can try to self-correct it.
 
 The integration sets up 23 sensors:
 - Chlorinator Current pH, 
