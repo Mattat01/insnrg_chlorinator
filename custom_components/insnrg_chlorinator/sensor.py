@@ -5,6 +5,7 @@ import async_timeout
 import uuid
 from datetime import datetime, timedelta
 from homeassistant.helpers.event import async_track_time_interval
+from homeassistant.helpers.typing import StateType
 from homeassistant.core import callback
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -61,6 +62,7 @@ class InsnrgConnectionSensor(RestoreEntity):
         self._coordinator = coordinator
         self._name = name
         self._state = None
+        self._last_state = None
         self._data_key = data_key
         self._last_updated = None
         self._unique_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{DOMAIN}_{data_key}"))
@@ -68,12 +70,12 @@ class InsnrgConnectionSensor(RestoreEntity):
     async def async_added_to_hass(self):
         """When entity is added to Home Assistant."""
         await super().async_added_to_hass()
-        state = await self.async_get_last_state()
-        if not state:
+        self._last_state = await self.async_get_last_state()
+        if not self._last_state:
             _LOGGER.info(f"This is the first time {self._name} has been added to HA. It won't obtain data until after your chlorinator is running for an hour.")
             return
-        _LOGGER.info(f"Recovering last known state of {self._name} ({state.state}).")
-        self._state = state.state
+        _LOGGER.info(f"Recovering last known state of {self._name} ({self._last_state.state}).")
+        self._state = self._last_state.state
 
         # Register the callback to update sensor when coordinator updates
         self.async_on_remove(self._coordinator.async_add_listener(self._handle_coordinator_update))
@@ -91,10 +93,13 @@ class InsnrgConnectionSensor(RestoreEntity):
     @property
     def state(self):
         # Check if pool_chemistry is not None before updating the state
-        pool_chemistry = self._coordinator.data.get("pool_chemistry")
+        try:
+            pool_chemistry = self._coordinator.data.get("pool_chemistry")
+        except Exception:
+            pool_chemistry = None
         if pool_chemistry is None:
             # If pool_chemistry is None (chlorinator off), don't update the state
-            return self._state  # Return the last known state or None if the entity has not existed before
+            return self._last_state.state  # Return the last known state or None if the entity has not existed before
         # Update the state based on the pool_chemistry data
         self._state = pool_chemistry.get(self._data_key)
         return self._state
@@ -111,27 +116,28 @@ class InsnrgConnectionSensor(RestoreEntity):
         return self._unique_id
 
 class InsnrgpHSensor(RestoreEntity):
-    def __init__(self, coordinator, name, data_key):
-        self._coordinator = coordinator
-        self._name = name
-        self._state = None
-        self._data_key = data_key
-        self._last_updated = None
-        self._unique_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{DOMAIN}_{data_key}"))
-
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_device_class = SensorDeviceClass.PH
     _attr_suggested_display_precision = 1
 
+    def __init__(self, coordinator, name, data_key):
+        self._coordinator = coordinator
+        self._name = name
+        self._state = None
+        self._last_state = None
+        self._data_key = data_key
+        self._last_updated = None
+        self._unique_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{DOMAIN}_{data_key}"))
+
     async def async_added_to_hass(self):
         """When entity is added to Home Assistant."""
         await super().async_added_to_hass()
-        state = await self.async_get_last_state()
-        if not state:
+        self._last_state = await self.async_get_last_state()
+        if not self._last_state:
             _LOGGER.info(f"This is the first time {self._name} has been added to HA. It won't obtain data until after your chlorinator is running for an hour.")
             return
-        _LOGGER.info(f"Recovering last known state of {self._name} ({state.state}).")
-        self._state = state.state
+        _LOGGER.info(f"Recovering last known state of {self._name} ({self._last_state.state}).")
+        self._state = self._last_state.state
 
         # Register the callback to update sensor when coordinator updates
         self.async_on_remove(self._coordinator.async_add_listener(self._handle_coordinator_update))
@@ -149,15 +155,23 @@ class InsnrgpHSensor(RestoreEntity):
     @property
     def state(self):
         # Check if pool_chemistry is not None before updating the state
-        pool_chemistry = self._coordinator.data.get("pool_chemistry")
+        try:
+            pool_chemistry = self._coordinator.data.get("pool_chemistry")
+        except Exception:
+            pool_chemistry = None
         if pool_chemistry is None:
-            # If pool_chemistry is None (chlorinator off), don't update the state
-            return self._state  # Return the last known state or None if the entity has not existed before
+            # If pool_chemistry is None (chlorinator off), return nothing so the state is not updated
+            return self._last_state.state
         if pool_chemistry.get(self._data_key) > 14:
-            return self._state # if the value is crazy out of range, just use the last known value
+            return self._last_state.state # if the value is crazy out of range, don't update the state
         # Update the state based on the pool_chemistry data
         self._state = pool_chemistry.get(self._data_key)
         return self._state
+
+    @property
+    def native_value(self) -> StateType:
+        """Return value of sensor."""
+        return self.attribute_value
 
     @property
     def extra_state_attributes(self):
@@ -171,28 +185,29 @@ class InsnrgpHSensor(RestoreEntity):
         return self._unique_id
 
 class InsnrgOrpSensor(RestoreEntity):
-    def __init__(self, coordinator, name, data_key):
-        self._coordinator = coordinator
-        self._name = name
-        self._state = None
-        self._data_key = data_key
-        self._last_updated = None
-        self._unique_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{DOMAIN}_{data_key}"))
-
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_device_class = SensorDeviceClass.VOLTAGE
     _attr_native_unit_of_measurement = UnitOfElectricPotential.MILLIVOLT
     _attr_suggested_display_precision = 0
 
+    def __init__(self, coordinator, name, data_key):
+        self._coordinator = coordinator
+        self._name = name
+        self._state = None
+        self._last_state = None
+        self._data_key = data_key
+        self._last_updated = None
+        self._unique_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{DOMAIN}_{data_key}"))
+
     async def async_added_to_hass(self):
         """When entity is added to Home Assistant."""
         await super().async_added_to_hass()
-        state = await self.async_get_last_state()
-        if not state:
+        self._last_state = await self.async_get_last_state()
+        if not self._last_state:
             _LOGGER.info(f"This is the first time {self._name} has been added to HA. It won't obtain data until after your chlorinator is running for an hour.")
             return
-        _LOGGER.info(f"Recovering last known state of {self._name} ({state.state}).")
-        self._state = state.state
+        _LOGGER.info(f"Recovering last known state of {self._name} ({self._last_state.state}).")
+        self._state = self._last_state.state
 
         # Register the callback to update sensor when coordinator updates
         self.async_on_remove(self._coordinator.async_add_listener(self._handle_coordinator_update))
@@ -210,21 +225,31 @@ class InsnrgOrpSensor(RestoreEntity):
     @property
     def state(self):
         # Check if pool_chemistry is not None before updating the state
-        pool_chemistry = self._coordinator.data.get("pool_chemistry")
+        try:
+            pool_chemistry = self._coordinator.data.get("pool_chemistry")
+        except Exception:
+            pool_chemistry = None
         if pool_chemistry is None:
-            # If pool_chemistry is None (chlorinator off), don't update the state
-            return self._state  # Return the last known state or None if the entity has not existed before
+            # If pool_chemistry is None (chlorinator off), return nothing so the state is not updated
+            return self._last_state.state
         if pool_chemistry.get(self._data_key) > 2000:
-            return self._state # if the value is crazy out of range, just use the last known value
+            return self._last_state.state # if the value is crazy out of range, don't update the state
         # Update the state based on the pool_chemistry data
         self._state = pool_chemistry.get(self._data_key)
         return self._state
 
     @property
+    def native_value(self) -> StateType:
+        """Return value of sensor."""
+        return self.attribute_value
+
+    @property
     def extra_state_attributes(self):
         """Return the state attributes."""
         return {
-            "last_updated": self._coordinator.updated
+            "last_updated": self._coordinator.updated,
+            "state_class": "measurement",
+            "unit_of_measurement": "mV"
         }
 
     @property
@@ -266,6 +291,11 @@ class InsnrgTempSensor(SensorEntity):
     @property
     def state(self):
         return self._coordinator.data.get(self._data_key)
+
+    @property
+    def native_value(self) -> StateType:
+        """Return value of sensor."""
+        return self.attribute_value
 
     @property
     def extra_state_attributes(self):

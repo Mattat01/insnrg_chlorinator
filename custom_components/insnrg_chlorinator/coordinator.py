@@ -55,20 +55,7 @@ class InsnrgChlorinatorCoordinator(DataUpdateCoordinator):
                     active_timer_found = True
                     break
 
-            # Step 3: If an active timer is found, update chemistry sensors
-            if active_timer_found:
-                _LOGGER.debug("Updating pool chemical sensors.")
-                pool_chemistry = await self._get_chemistry()
-                _LOGGER.debug(f"pool_chemistry is {pool_chemistry}")
-                if not pool_chemistry:
-                    _LOGGER.error("Failed to retrieve pool chemical data.")
-            else:
-                _LOGGER.debug("No active timer found or no chlorinator is associated with a timer. Skipping chemical updates whilst chlorinator is not running.")
-        else:
-            _LOGGER.debug("Unable to determine if the chlorinator is running. Updating pool chemistry sensors anyway but the values may be inaccurate.")
-            pool_chemistry = await self._get_chemistry()
-            if not pool_chemistry:
-                _LOGGER.error("Failed to retrieve pool chemistry data.")
+        pool_chemistry = await self._get_chemistry()
 
         # Step 4: Update temperature
         _LOGGER.debug("Updating pool temperature.")
@@ -79,14 +66,23 @@ class InsnrgChlorinatorCoordinator(DataUpdateCoordinator):
             _LOGGER.debug("Retrieved Temp: %s", temperature)
 
         # Bundle and return all data: timers, temperature, and pool chemistry
-        if pool_chemistry:
+        if active_timer_found:
+            _LOGGER.info("The chlorinator is on. Using current chemistry.")
+            self.last_pool_chemistry = pool_chemistry
             return {
                 "timers": timers,
                 "temperature": temperature,
                 "pool_chemistry": pool_chemistry
             }
-        elif not self.last_pool_chemistry:
-            _LOGGER.warning("Not using pool_chemistry, as the chlorinator is off and may be inaccurate.")
+        elif self.last_pool_chemistry:
+            _LOGGER.warning("Using last known pool_chemistry, as the chlorinator is off and current readings may be inaccurate.")
+            return {
+                "timers": timers,
+                "temperature": temperature,
+                "pool_chemistry": self.last_pool_chemistry
+            }
+        else:
+            _LOGGER.warning("Not updating pool_chemistry, as the chlorinator is off and may be inaccurate. No previous data available")
             return {
                 "timers": timers,
                 "temperature": temperature,
