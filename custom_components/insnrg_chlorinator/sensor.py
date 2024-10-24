@@ -102,6 +102,7 @@ class InsnrgConnectionSensor(RestoreEntity):
             return self._last_state.state  # Return the last known state or None if the entity has not existed before
         # Update the state based on the pool_chemistry data
         self._state = pool_chemistry.get(self._data_key)
+        self._last_state.state = self._state
         return self._state
 
     @property
@@ -166,6 +167,7 @@ class InsnrgpHSensor(RestoreEntity):
             return self._last_state.state # if the value is crazy out of range, don't update the state
         # Update the state based on the pool_chemistry data
         self._state = pool_chemistry.get(self._data_key)
+        self._last_state.state = self._state
         return self._state
 
     @property
@@ -236,6 +238,7 @@ class InsnrgOrpSensor(RestoreEntity):
             return self._last_state.state # if the value is crazy out of range, don't update the state
         # Update the state based on the pool_chemistry data
         self._state = pool_chemistry.get(self._data_key)
+        self._last_state.state = self._state
         return self._state
 
     @property
