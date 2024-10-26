@@ -3,9 +3,9 @@
 <p align="center">
   <img src="https://github.com/user-attachments/assets/8e05446e-bc14-4a21-9f6d-8e9f9defd630" alt="Image">
 </p>
-<p align="center">
- <img src="https://github.com/user-attachments/assets/4b954930-9611-4408-a047-09a35a6e01cc"
 
+<p align="center">
+ <img src="https://github.com/user-attachments/assets/4b954930-9611-4408-a047-09a35a6e01cc" alt="Image">
 </p>
 
 This is a small part of the INSNRG Pool Chlorinator API and collects data from [https://www.insnrgapp.com](https://www.insnrgapp.com). You cannot set anything through this integration—use the official interface for that—but you can automate other actions and notifications with this information.
