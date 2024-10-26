@@ -1,5 +1,5 @@
 # ha-insnrg-chlorinator
-
+![GitHub Release](https://img.shields.io/github/release/Mattat01/ha-insnrg-chlorinator.svg?style=plastic) ![GitHub issues](https://img.shields.io/github/issues/Mattat01/ha-insnrg-chlorinator.svg?style=plastic) ![GitHub Stars](https://img.shields.io/github/stars/Mattat01/ha-insnrg-chlorinator.svg?style=plastic) ![GitHub Last Commit](https://img.shields.io/github/last-commit/Mattat01/ha-insnrg-chlorinator.svg?style=plastic) ![Documentation](https://img.shields.io/badge/docs-excellent-brightgreen.svg?style=plastic) ![HACS Status](https://img.shields.io/badge/HACS-Default-blue.svg?style=plastic) ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-%3E%3D%202024.10.1-brightgreen.svg?style=plastic) 
 <p align="center">
   <img src="https://github.com/user-attachments/assets/8e05446e-bc14-4a21-9f6d-8e9f9defd630" alt="Image">
 </p>
