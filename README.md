@@ -107,3 +107,8 @@ This guide will walk you through the steps to install and set up the custom INSN
   - **Check Logs**: Go to **"Settings" > "System" > "Logs"** to check for error messages regarding token expiry.
   - **Reinstall Integration**: Delete the integration and reinstall it to force re-authentication.
   - **Report Errors**: If the problem persists, report the issue with the relevant log information in the [Issues section of the repository](https://github.com/Mattat01/ha-insnrg-chlorinator/issues).
+
+---
+
+
+**By installing via HACS, you receive automatic updates and easier management of the integration within Home Assistant. If you have any questions or issues, we are happy to assist you.**
