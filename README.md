@@ -1,5 +1,6 @@
 # ha-insnrg-chlorinator
 
+
 This is a small portion of the INSNRG Pool Chlorinator API and collects data from https://www.insnrgapp.com. You cannot set anything through this integration, use the official interface for that, but you can automate other actions and alerts with this information.
 
 The integration takes your INSNRGapp email and password (same as you log into the above website) and logs you in.
@@ -36,7 +37,7 @@ Download or clone the contents of custom_components/insnrg_chlorinator.
 
 ### 2. Copy the Files to Home Assistant
 Using File Editor, SSH, or another method, navigate to your Home Assistant custom_components folder. 
-If it doesn’t exist, create it in the /homeassistant directory.
+If it doesnâ€™t exist, create it in the /homeassistant directory.
 Create a new folder within custom_components named ha_insnrg_chlorinator.
 Copy the downloaded files into this new folder.
 
