@@ -42,7 +42,7 @@ This guide will walk you through the steps to install and set up the custom INSN
 ### **Prerequisites**
 
 - **Home Assistant** must already be installed and configured on your system.
-- **HACS** should be installed. If not, follow the instructions at [HACS Installation](https://hacs.xyz/docs/installation/installation).
+- **HACS** should be installed. If not, follow the instructions at [HACS Installation](https://www.hacs.xyz/docs/use/download/prerequisites/).
 
 ### **Step-by-Step Guide**
 
