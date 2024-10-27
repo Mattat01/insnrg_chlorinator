@@ -1,12 +1,12 @@
 {
     "domain": "ha-insnrg-chlorinator",
     "name": "INSNRG Chlorinator",
-    "documentation": "https://github.com/Mattat01/ha-insnrg-chlorinator",
-    "issue_tracker": "https://github.com/Mattat01/ha-insnrg-chlorinator/issues",
+    "codeowners": [ "@Mattat01" ],
     "config_flow": true,
     "dependencies": [],
-    "codeowners": [ "@Mattat01" ],
+    "documentation": "https://github.com/Mattat01/ha-insnrg-chlorinator",
+    "iot_class": "cloud_polling",
+    "issue_tracker": "https://github.com/Mattat01/ha-insnrg-chlorinator/issues",
     "requirements": [ "aioboto3" ],
-    "version": "1.0.0",
-    "iot_class": "cloud_polling"
+    "version": "1.0.0"
 }
