@@ -1,4 +1,4 @@
-DOMAIN = "ha-insnrg-chlorinator"
+DOMAIN = "insnrg_chlorinator"
 API_URL = "https://imnwf40hng.execute-api.us-east-2.amazonaws.com/prod/actionApi"
 API_SystemID_URL = "https://69lfsbfsrb.execute-api.us-east-2.amazonaws.com/prod/all"
 ClientId = "50kmkes69ij352vpq3ec7dfki2"
