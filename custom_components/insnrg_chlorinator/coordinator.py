@@ -1,7 +1,9 @@
 import logging
 import aiohttp
+import asyncio
 import async_timeout
-import aioboto3
+import boto3
+from botocore.exceptions import ClientError
 import json
 from datetime import datetime, timedelta
 from botocore.exceptions import ClientError
@@ -115,37 +117,39 @@ class InsnrgChlorinatorCoordinator(DataUpdateCoordinator):
         """Use the refresh token to get a new access token."""
         _LOGGER.debug("Refreshing access token")
 
-        session = aioboto3.Session()
+        def refresh_token_sync():
+            """Synchronously refresh the token in an executor."""
+            client = boto3.client('cognito-idp', region_name='us-east-2')
+            response = client.initiate_auth(
+                ClientId=ClientId,
+                AuthFlow='REFRESH_TOKEN_AUTH',
+                AuthParameters={'REFRESH_TOKEN': self.refresh_token}
+            )
+            return response
 
         try:
-            async with session.client('cognito-idp', region_name='us-east-2') as client:
-                response = await client.initiate_auth(
-                    ClientId=ClientId,
-                    AuthFlow='REFRESH_TOKEN_AUTH',
-                    AuthParameters={
-                        'REFRESH_TOKEN': self.refresh_token
-                    }
-                )
+            # Run the synchronous function in Home Assistant’s executor
+            response = await self.hass.async_add_executor_job(refresh_token_sync)
 
-                #_LOGGER.debug("Token refresh response received: %s", response)
+            #_LOGGER.debug("Token refresh response received: %s", response)
 
-                # Extract new tokens from the response
-                auth_result = response['AuthenticationResult']
-                self.token = auth_result['AccessToken']
-                self.expiry = timedelta(seconds=auth_result['ExpiresIn']) + datetime.now()
-                self.id_token = auth_result['IdToken']
+            # Extract new tokens from the response
+            auth_result = response['AuthenticationResult']
+            self.token = auth_result['AccessToken']
+            self.expiry = timedelta(seconds=auth_result['ExpiresIn']) + datetime.now()
+            self.id_token = auth_result['IdToken']
 
                 # Refresh token remains the same, unless provided
-                if 'RefreshToken' in auth_result:
-                    self.refresh_token = auth_result['RefreshToken']
+            if 'RefreshToken' in auth_result:
+                self.refresh_token = auth_result['RefreshToken']
 
-                _LOGGER.debug("Token refresh successful: New access token and expiry retrieved")
+            _LOGGER.debug("Token refresh successful: New access token and expiry retrieved")
 
         except ClientError as e:
             error_code = e.response['Error']['Code']
             if error_code in ('NotAuthorizedException', 'InvalidRefreshTokenException'):
                 _LOGGER.error("Refresh token expired or invalid, prompting user for reauthentication.")
-#       Consider failure messages and handle to prompt credential check instead of UpdateFailed.
+#               Consider failure messages and handle to prompt credential check instead of UpdateFailed.
 #                raise ConfigEntryAuthFailed("Could not log in, please check your email and password.") from e
                 raise UpdateFailed("Refresh token invalid or expired. Reauthentication required.")
             else:
