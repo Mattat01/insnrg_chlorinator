@@ -94,7 +94,7 @@ class InsnrgChlorinatorCoordinator(DataUpdateCoordinator):
     def _token_expired(self):
         """Check if the token has expired."""
 
-        # If expiry is a string, convert it to a datetime object
+        # If expiry is a string, convert it to a datetime object 
         if isinstance(self.expiry, str):
             try:
                 expiry_datetime = datetime.strptime(self.expiry, "%Y-%m-%dT%H:%M:%S.%f")
@@ -128,7 +128,7 @@ class InsnrgChlorinatorCoordinator(DataUpdateCoordinator):
             return response
 
         try:
-            # Run the synchronous function in Home Assistant’s executor
+            # Run the synchronous function in Home Assistantâ€™s executor
             response = await self.hass.async_add_executor_job(refresh_token_sync)
 
             #_LOGGER.debug("Token refresh response received: %s", response)
