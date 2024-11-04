@@ -2,7 +2,8 @@ import voluptuous as vol
 import logging
 import aiohttp
 import async_timeout
-import aioboto3
+import asyncio
+import boto3
 from datetime import datetime, timedelta
 from homeassistant import config_entries
 from homeassistant.core import callback
@@ -22,80 +23,78 @@ class InsnrgChlorinatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_user(self, user_input=None):
         errors = {}
         if user_input is not None:
-            # Log input for debugging
             #_LOGGER.debug("Received user input: %s", user_input)
-
             username = user_input["Username"]
             password = user_input["Password"]
 
-            session = aioboto3.Session()
+            def initiate_auth_sync(username, password):
+                """Synchronously perform USER_SRP_AUTH and process challenges."""
+                client = boto3.client('cognito-idp', region_name='us-east-2')
+
+                # Start SRP authentication
+                aws_srp = AWSSRP(
+                    username=username,
+                    password=password,
+                    pool_id=PoolId,
+                    client_id=ClientId,
+                    client=client
+                )
+                auth_params = aws_srp.get_auth_params()
+
+                # Initiate authentication
+                response = client.initiate_auth(
+                    ClientId=ClientId,
+                    AuthFlow='USER_SRP_AUTH',
+                    AuthParameters=auth_params
+                )
+                _LOGGER.debug("Received auth response")
+                #_LOGGER.debug("Auth response contents: %s", response)
+
+                if response.get('ChallengeName') == 'PASSWORD_VERIFIER':
+                    _LOGGER.debug("Processing password challenge")
+                    challenge_responses = aws_srp.process_challenge(
+                        response['ChallengeParameters'],
+                        auth_params
+                    )
+                    #_LOGGER.debug("ChallengeParameters: %s", response['ChallengeParameters']) # This should include PASSWORD_CLAIM_SECRET_BLOCK, PASSWORD_CLAIM_SIGNATURE, TIMESTAMP, USERNAME (as a UUID)
+
+                    # Respond to password challenge
+                    response = client.respond_to_auth_challenge(
+                        ClientId=ClientId,
+                        ChallengeName='PASSWORD_VERIFIER',
+                        ChallengeResponses=challenge_responses
+                    )
+                    #_LOGGER.debug("Challenge response received: %s", response)
+
+                # Extract tokens
+                auth_result = response['AuthenticationResult']
+                return {
+                    "access_token": auth_result['AccessToken'],
+                    "expiry": timedelta(seconds=auth_result['ExpiresIn']) + datetime.now(),
+                    "id_token": auth_result['IdToken'],
+                    "refresh_token": auth_result['RefreshToken']
+                }
+                _LOGGER.debug("Authentication successful, tokens retrieved. Getting System ID")
 
             try:
-                async with session.client('cognito-idp', region_name='us-east-2') as client:
-                    # Log when starting SRP auth
-                    _LOGGER.debug("Starting SRP authentication")
+                # Run the synchronous authentication function in the executor
+                _LOGGER.debug("Starting SRP authentication")
+                auth_result = await self.hass.async_add_executor_job(
+                    initiate_auth_sync, username, password
+                )
 
-                    aws_srp = AWSSRP(
-                        username=username,
-                        password=password,
-                        pool_id=PoolId,
-                        client_id=ClientId,
-                        client=client
-                    )
+                # Use the id_token to retrieve the system ID asynchronously
+                system_id = await self._get_system_id(auth_result['id_token'])
 
-                    auth_params = aws_srp.get_auth_params()
-                    #_LOGGER.debug("Generated auth params: %s", auth_params)
-
-                    response = await client.initiate_auth(
-                        ClientId=ClientId,
-                        AuthFlow='USER_SRP_AUTH',
-                        AuthParameters=auth_params
-                    )
-
-                    _LOGGER.debug("Received auth response")
-                    #_LOGGER.debug("Auth response contents: %s", response)
-
-                    if response.get('ChallengeName') == 'PASSWORD_VERIFIER':
-                        _LOGGER.debug("Processing password challenge")
-
-                        challenge_responses = aws_srp.process_challenge(
-                            response['ChallengeParameters'],    # This should include PASSWORD_CLAIM_SECRET_BLOCK, PASSWORD_CLAIM_SIGNATURE, TIMESTAMP, USERNAME (as a UUID)
-                            auth_params
-                        )
-                        #_LOGGER.debug("ChallengeParameters: %s", response['ChallengeParameters'])
-
-                        response = await client.respond_to_auth_challenge(
-                            ClientId=ClientId,
-                            ChallengeName='PASSWORD_VERIFIER',
-                            ChallengeResponses=challenge_responses
-                        )
-
-                        #_LOGGER.debug("Challenge response received: %s", response)
-
-                    # Extract tokens
-                    auth_result = response['AuthenticationResult']
-                    access_token = auth_result['AccessToken']
-                    expiry = timedelta(seconds=auth_result['ExpiresIn']) + datetime.now()
-                    id_token = auth_result['IdToken']
-                    refresh_token = auth_result['RefreshToken']
-
-                    # Log success
-                    _LOGGER.debug("Authentication successful, tokens retrieved. Getting System ID")
-                    
-                    system_id = await self._get_system_id(id_token)
-
-                    # Store tokens and additional data
-                    return self.async_create_entry(
-                        title="INSNRG Chlorinator",
-                        data={
-                            "Username": username,
-                            "access_token": access_token,
-                            "expiry": expiry,
-                            "id_token": id_token,
-                            "refresh_token": refresh_token,
-                            "system_id": system_id,
-                        }
-                    )
+                # Store tokens and additional data in the configuration entry
+                return self.async_create_entry(
+                    title="INSNRG Chlorinator",
+                    data={
+                        "Username": username,
+                        **auth_result,
+                        "system_id": system_id,
+                    }
+                )
             except ClientError as e:
                 _LOGGER.error(f"Authentication failed: {e}")
                 errors["base"] = "auth_failed"

@@ -3,7 +3,6 @@ import aiohttp
 import asyncio
 import async_timeout
 import boto3
-from botocore.exceptions import ClientError
 import json
 from datetime import datetime, timedelta
 from botocore.exceptions import ClientError
