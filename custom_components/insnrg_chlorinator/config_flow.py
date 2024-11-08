@@ -68,13 +68,13 @@ class InsnrgChlorinatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
                 # Extract tokens
                 auth_result = response['AuthenticationResult']
+                _LOGGER.debug("Authentication successful, tokens retrieved. Getting System ID")
                 return {
                     "access_token": auth_result['AccessToken'],
                     "expiry": timedelta(seconds=auth_result['ExpiresIn']) + datetime.now(),
                     "id_token": auth_result['IdToken'],
                     "refresh_token": auth_result['RefreshToken']
                 }
-                _LOGGER.debug("Authentication successful, tokens retrieved. Getting System ID")
 
             try:
                 # Run the synchronous authentication function in the executor

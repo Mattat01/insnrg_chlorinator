@@ -1,5 +1,5 @@
-# ha-insnrg-chlorinator
-![GitHub Release](https://img.shields.io/github/release/Mattat01/ha-insnrg-chlorinator.svg?style=plastic) ![GitHub issues](https://img.shields.io/github/issues/Mattat01/ha-insnrg-chlorinator.svg?style=plastic) ![GitHub Stars](https://img.shields.io/github/stars/Mattat01/ha-insnrg-chlorinator.svg?style=plastic) ![GitHub Last Commit](https://img.shields.io/github/last-commit/Mattat01/ha-insnrg-chlorinator.svg?style=plastic) ![Documentation](https://img.shields.io/badge/docs-excellent-brightgreen.svg?style=plastic) ![HACS Status](https://img.shields.io/badge/HACS-Default-blue.svg?style=plastic) ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-%3E%3D%202024.10.1-brightgreen.svg?style=plastic) 
+# insnrg_chlorinator
+![GitHub Release](https://img.shields.io/github/release/Mattat01/insnrg_chlorinator.svg?style=plastic) ![GitHub issues](https://img.shields.io/github/issues/Mattat01/insnrg_chlorinator.svg?style=plastic) ![GitHub Stars](https://img.shields.io/github/stars/Mattat01/insnrg_chlorinator.svg?style=plastic) ![GitHub Last Commit](https://img.shields.io/github/last-commit/Mattat01/insnrg_chlorinator.svg?style=plastic) ![Documentation](https://img.shields.io/badge/docs-excellent-brightgreen.svg?style=plastic) ![HACS Status](https://img.shields.io/badge/HACS-Default-blue.svg?style=plastic) ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-%3E%3D%202024.10.1-brightgreen.svg?style=plastic) 
 <p align="center">
   <img src="https://github.com/user-attachments/assets/8e05446e-bc14-4a21-9f6d-8e9f9defd630" alt="Image">
 </p>
@@ -59,7 +59,7 @@ This guide will walk you through the steps to install and set up the custom INSN
 
 - In the **"Add Custom Repository URL"** field, paste the following URL:
   ```
-  https://github.com/Mattat01/ha-insnrg-chlorinator
+  https://github.com/Mattat01/insnrg_chlorinator
   ```
 - Under **"Category"**, select **"Integration"**.
 - Click on **"Add"**.
@@ -106,7 +106,7 @@ This guide will walk you through the steps to install and set up the custom INSN
 - **Automatic Token Refresh**: The integration should automatically refresh your access tokens. If this fails:
   - **Check Logs**: Go to **"Settings" > "System" > "Logs"** to check for error messages regarding token expiry.
   - **Reinstall Integration**: Delete the integration and reinstall it to force re-authentication.
-  - **Report Errors**: If the problem persists, report the issue with the relevant log information in the [Issues section of the repository](https://github.com/Mattat01/ha-insnrg-chlorinator/issues).
+  - **Report Errors**: If the problem persists, report the issue with the relevant log information in the [Issues section of the repository](https://github.com/Mattat01/insnrg_chlorinator/issues).
 
 ---
 
