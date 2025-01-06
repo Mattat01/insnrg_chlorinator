@@ -163,7 +163,7 @@ class InsnrgpHSensor(RestoreEntity):
         if pool_chemistry is None:
             # If pool_chemistry is None (chlorinator off), return nothing so the state is not updated
             return self._last_state.state if self._last_state is not None else "unknown"
-        if pool_chemistry.get(self._data_key) > 14:
+        if int(pool_chemistry.get(self._data_key)) > 14:
             return self._last_state.state # if the value is crazy out of range, don't update the state
         # Update the state based on the pool_chemistry data
         self._state = pool_chemistry.get(self._data_key)
@@ -234,7 +234,7 @@ class InsnrgOrpSensor(RestoreEntity):
         if pool_chemistry is None:
             # If pool_chemistry is None (chlorinator off), return nothing so the state is not updated
             return self._last_state.state if self._last_state is not None else "unknown"
-        if pool_chemistry.get(self._data_key) > 2000:
+        if int(pool_chemistry.get(self._data_key)) > 2000:
             return self._last_state.state # if the value is crazy out of range, don't update the state
         # Update the state based on the pool_chemistry data
         self._state = pool_chemistry.get(self._data_key)
