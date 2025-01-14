@@ -3,6 +3,7 @@ import requests
 import aiohttp
 import async_timeout
 import uuid
+import re
 from datetime import datetime, timedelta
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.typing import StateType
@@ -160,14 +161,45 @@ class InsnrgpHSensor(RestoreEntity):
             pool_chemistry = self._coordinator.data.get("pool_chemistry")
         except Exception:
             pool_chemistry = None
+
         if pool_chemistry is None:
-            # If pool_chemistry is None (chlorinator off), return nothing so the state is not updated
+            # If pool_chemistry is None (chlorinator off), return the last known state or "unknown"
             return self._last_state.state if self._last_state is not None else "unknown"
-        if int(pool_chemistry.get(self._data_key)) > 14:
-            return self._last_state.state # if the value is crazy out of range, don't update the state
-        # Update the state based on the pool_chemistry data
-        self._state = pool_chemistry.get(self._data_key)
-        self._last_state.state = self._state
+
+        # Safely fetch and convert the data
+        def get_numeric_value(data, key):
+            # Safely extract a numeric value for comparison, handling prefixed strings.
+            value = data.get(key)
+            if value is None:
+                return None  # Handle missing key
+            try:
+                # Handle strings with comparison prefixes like '< 300' or '> 8.5'
+                if isinstance(value, str):
+                    match = re.search(r"[-+]?[0-9]*\.?[0-9]+", value)
+                    if match:
+                        numeric_value = float(match.group())
+                        return numeric_value  # Always return as a float for flexibility
+                # Directly convert numeric types
+                return float(value)
+            except (ValueError, TypeError):
+                return None  # Return None if conversion fails
+
+        # Get the numeric value for the data key
+        value = get_numeric_value(pool_chemistry, self._data_key)
+
+        if value is None:
+            # If the value can't be converted to a number, log a warning and return "unknown"
+            _LOGGER.warning("Invalid or missing data for key '%s': %s", self._data_key, pool_chemistry.get(self._data_key))
+            return "unknown"
+
+        if value > 14:
+            # If the value is out of range, do not update the state
+            return self._last_state.state if self._last_state is not None else "unknown"
+
+        # Update the state based on the valid numeric value
+        self._state = value
+        if self._last_state is not None:
+            self._last_state.state = self._state
         return self._state
 
     @property
@@ -231,14 +263,45 @@ class InsnrgOrpSensor(RestoreEntity):
             pool_chemistry = self._coordinator.data.get("pool_chemistry")
         except Exception:
             pool_chemistry = None
+
         if pool_chemistry is None:
-            # If pool_chemistry is None (chlorinator off), return nothing so the state is not updated
+            # If pool_chemistry is None (chlorinator off), return the last known state or "unknown"
             return self._last_state.state if self._last_state is not None else "unknown"
-        if int(pool_chemistry.get(self._data_key)) > 2000:
-            return self._last_state.state # if the value is crazy out of range, don't update the state
-        # Update the state based on the pool_chemistry data
-        self._state = pool_chemistry.get(self._data_key)
-        self._last_state.state = self._state
+
+        # Safely fetch and convert the data
+        def get_numeric_value(data, key):
+            # Safely extract a numeric value for comparison, handling prefixed strings.
+            value = data.get(key)
+            if value is None:
+                return None  # Handle missing key
+            try:
+                # Handle strings with comparison prefixes like '< 300' or '> 8.5'
+                if isinstance(value, str):
+                    match = re.search(r"[-+]?[0-9]*\.?[0-9]+", value)
+                    if match:
+                        numeric_value = float(match.group())
+                        return numeric_value  # Always return as a float for flexibility
+                # Directly convert numeric types
+                return float(value)
+            except (ValueError, TypeError):
+                return None  # Return None if conversion fails
+
+        # Get the numeric value for the data key
+        value = get_numeric_value(pool_chemistry, self._data_key)
+
+        if value is None:
+            # If the value can't be converted to a number, log a warning and return "unknown"
+            _LOGGER.warning("Invalid or missing data for key '%s': %s", self._data_key, pool_chemistry.get(self._data_key))
+            return "unknown"
+
+        if int(value) > 2000:
+            # If the value is out of range, do not update the state
+            return self._last_state.state if self._last_state is not None else "unknown"
+
+        # Update the state based on the valid numeric value
+        self._state = int(value)
+        if self._last_state is not None:
+            self._last_state.state = self._state
         return self._state
 
     @property
