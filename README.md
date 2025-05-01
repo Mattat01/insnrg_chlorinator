@@ -8,7 +8,7 @@
  <img src="https://github.com/user-attachments/assets/4b954930-9611-4408-a047-09a35a6e01cc" alt="Image">
 </p>
 
-THERE IS NOW AN OFFICIAL INTEGRATION AVAILABLE FOR HOME ASSISTANT VIA HACS. PLEASE USE THAT ONE AS i'M NO LONGER GOING TO MAINTAIN THIS ONE. tHANKS FOR YOUR PAST SUPPORT (OR JUST VISITING)!
+THERE IS NOW AN OFFICIAL INTEGRATION AVAILABLE FOR HOME ASSISTANT VIA HACS. PLEASE USE THAT ONE AS i'M NO LONGER GOING TO MAINTAIN THIS ONE. THANKS FOR YOUR PAST SUPPORT (OR JUST VISITING)!
 
 This is a small part of the INSNRG Pool Chlorinator API and collects data from [https://www.insnrgapp.com](https://www.insnrgapp.com). You cannot set anything through this integration—use the official interface for that—but you can automate other actions and notifications with this information.
 
