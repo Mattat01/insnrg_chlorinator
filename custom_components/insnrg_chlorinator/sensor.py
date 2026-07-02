@@ -103,7 +103,8 @@ class InsnrgConnectionSensor(RestoreEntity):
             return self._last_state.state if self._last_state is not None else "unknown"
         # Update the state based on the pool_chemistry data
         self._state = pool_chemistry.get(self._data_key)
-        self._last_state.state = self._state
+        if self._last_state is not None:
+            self._last_state.state = self._state
         return self._state
 
     @property
